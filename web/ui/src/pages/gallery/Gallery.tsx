@@ -285,17 +285,20 @@ const GalleryPage = () => {
     const isSelected = selected.has(screenshot.id);
 
     return (
-      <div key={screenshot.id} className="relative">
+      <div
+        key={screenshot.id}
+        className={cn("relative", selectMode && "cursor-pointer")}
+        onClick={selectMode ? () => toggleSelect(screenshot.id) : undefined}
+      >
         {selectMode && (
-          <button
-            onClick={() => toggleSelect(screenshot.id)}
+          <div
             className={cn(
-              "absolute top-0 left-0 z-20 p-1.5 rounded-br-lg transition-colors",
-              isSelected ? "bg-blue-500 text-white" : "bg-black/60 text-gray-300 hover:text-white"
+              "absolute top-0 left-0 z-20 p-1.5 rounded-br-lg transition-colors pointer-events-none",
+              isSelected ? "bg-blue-500 text-white" : "bg-black/60 text-gray-300"
             )}
           >
             {isSelected ? <CheckSquareIcon className="w-4 h-4" /> : <SquareIcon className="w-4 h-4" />}
-          </button>
+          </div>
         )}
         <Card className={cn(
           "group overflow-hidden transition-all hover:shadow-lg flex flex-col h-full",
@@ -303,7 +306,7 @@ const GalleryPage = () => {
           isSelected && selectMode && "ring-2 ring-blue-500"
         )}>
           {/* Review tag bar */}
-          <div className="flex items-center gap-1 px-2 py-1 border-b" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center gap-1 px-2 py-1 border-b" onClick={e => { if (selectMode) return; e.stopPropagation(); }}>
             {REVIEW_STATUSES.map(s => {
               const Icon = s.icon;
               const isActive = screenshot.review_status === s.key;
@@ -312,10 +315,11 @@ const GalleryPage = () => {
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
-                        onClick={(e) => { e.preventDefault(); setReviewStatus(screenshot.id, idx, s.key); }}
+                        onClick={(e) => { if (selectMode) return; e.preventDefault(); setReviewStatus(screenshot.id, idx, s.key); }}
                         className={cn(
                           "p-1 rounded transition-all border",
-                          isActive ? s.bg : "border-transparent hover:border-muted-foreground/30"
+                          isActive ? s.bg : "border-transparent hover:border-muted-foreground/30",
+                          selectMode && "pointer-events-none"
                         )}
                       >
                         <Icon className={cn("w-3.5 h-3.5", isActive ? s.color : "text-muted-foreground")} />
@@ -333,7 +337,7 @@ const GalleryPage = () => {
             )}
           </div>
 
-          <Link to={`/screenshot/${screenshot.id}`}>
+          {selectMode ? (
             <CardContent className="p-0 relative flex-grow">
               {screenshot.failed ? (
                 <div className="w-full h-48 bg-gray-800 flex items-center justify-center">
@@ -346,7 +350,7 @@ const GalleryPage = () => {
                     : api.endpoints.screenshot.path + "/" + screenshot.file_name}
                   alt={screenshot.url}
                   loading="lazy"
-                  className="w-full h-48 object-cover transition-all duration-300 filter group-hover:scale-105"
+                  className="w-full h-48 object-cover"
                 />
               )}
               <div className="absolute top-2 right-2">
@@ -354,11 +358,35 @@ const GalleryPage = () => {
                   {screenshot.response_code}
                 </Badge>
               </div>
-              <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                <ExternalLinkIcon className="text-white drop-shadow-lg" />
-              </div>
             </CardContent>
-          </Link>
+          ) : (
+            <Link to={`/screenshot/${screenshot.id}`}>
+              <CardContent className="p-0 relative flex-grow">
+                {screenshot.failed ? (
+                  <div className="w-full h-48 bg-gray-800 flex items-center justify-center">
+                    <XIcon className="text-gray-600 w-12 h-12" />
+                  </div>
+                ) : (
+                  <img
+                    src={screenshot.screenshot
+                      ? `data:image/png;base64,${screenshot.screenshot}`
+                      : api.endpoints.screenshot.path + "/" + screenshot.file_name}
+                    alt={screenshot.url}
+                    loading="lazy"
+                    className="w-full h-48 object-cover transition-all duration-300 filter group-hover:scale-105"
+                  />
+                )}
+                <div className="absolute top-2 right-2">
+                  <Badge variant="default" className={`${getStatusColor(screenshot.response_code)}`}>
+                    {screenshot.response_code}
+                  </Badge>
+                </div>
+                <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <ExternalLinkIcon className="text-white drop-shadow-lg" />
+                </div>
+              </CardContent>
+            </Link>
+          )}
 
           <CardFooter className="p-2 flex flex-col items-start">
             <div className="w-full mb-1">
@@ -378,21 +406,23 @@ const GalleryPage = () => {
                 <div className="truncate text-xs text-muted-foreground flex-1">
                   {screenshot.url}
                 </div>
-                <TooltipProvider delayDuration={0}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        onClick={(e) => { e.preventDefault(); copyUrl(screenshot.url); }}
-                        className="shrink-0 p-0.5 rounded hover:bg-muted transition-colors"
-                      >
-                        <CopyIcon className="w-3 h-3 text-muted-foreground hover:text-foreground" />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="text-xs">
-                      <p>Copy URL</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                {!selectMode && (
+                  <TooltipProvider delayDuration={0}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); e.preventDefault(); copyUrl(screenshot.url); }}
+                          className="shrink-0 p-0.5 rounded hover:bg-muted transition-colors"
+                        >
+                          <CopyIcon className="w-3 h-3 text-muted-foreground hover:text-foreground" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="text-xs">
+                        <p>Copy URL</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
               </div>
             </div>
             <div className="w-full flex items-center justify-between mt-1">
@@ -435,15 +465,17 @@ const GalleryPage = () => {
               </div>
             </div>
             {/* Comment area */}
-            <div className="w-full mt-1" onClick={e => e.stopPropagation()}>
-              <Textarea
-                placeholder="comment..."
-                value={screenshot.review_comment || ''}
-                onChange={(e) => handleCommentChange(screenshot.id, idx, e.target.value)}
-                className="text-xs min-h-[28px] max-h-[80px] resize-y font-mono"
-                rows={1}
-              />
-            </div>
+            {!selectMode && (
+              <div className="w-full mt-1" onClick={e => e.stopPropagation()}>
+                <Textarea
+                  placeholder="comment..."
+                  value={screenshot.review_comment || ''}
+                  onChange={(e) => handleCommentChange(screenshot.id, idx, e.target.value)}
+                  className="text-xs min-h-[28px] max-h-[80px] resize-y font-mono"
+                  rows={1}
+                />
+              </div>
+            )}
           </CardFooter>
         </Card>
       </div>
