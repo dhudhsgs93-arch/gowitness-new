@@ -1,106 +1,99 @@
-# gowitness-new — gowitness v3.1.1 с review системой
+# gowitness-new
 
-Форк gowitness с добавленными тегами, комментариями и фильтрами для ревью скриншотов.
+Fork of [gowitness](https://github.com/sensepost/gowitness) v3.1.1 with a built-in review system for triaging screenshots during bug bounty and penetration testing engagements.
 
-## Установка
+![Review tags and infinite scroll gallery](https://img.shields.io/badge/gowitness-v3.1.1-blue) ![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go&logoColor=white) ![Node](https://img.shields.io/badge/Node-18+-339933?logo=node.js&logoColor=white)
+
+## What's Added
+
+**Review tags** — each card in the gallery has a row of one-click status buttons:
+
+| Tag | Color | Purpose |
+|-----|-------|---------|
+| Done | Green | Reviewed, nothing interesting |
+| Attention | Red | Needs a closer look |
+| Interesting | Yellow | Worth investigating |
+| Vuln | Purple | Confirmed vulnerability |
+| Junk | Gray | Noise (card fades out) |
+
+Clicking an active tag removes it. A colored left border indicates the current status.
+
+**Comments** — a text field under every card with autosave (0.8s debounce).
+
+**Filter pills** — toolbar shows counts per status. Click to filter the gallery by tag.
+
+**Infinite scroll** — no pagination, just scroll down. Loads 48 results per batch automatically.
+
+**Detail page** — clicking a screenshot opens the detail view with review controls at the top.
+
+**Export** — `GET /api/review/export` returns a markdown summary of all tagged and commented hosts.
+
+Everything else (scanning, probing, nmap import, etc.) works exactly like upstream gowitness.
+
+## Install
+
+Download the binary from [Releases](../../releases) or build from source (see below).
 
 ```bash
-# скопировать бинарник в PATH (один раз)
+# copy to PATH
 sudo cp gowitness-new /usr/local/bin/gowitness-new
 ```
 
-## Запуск
+## Usage
 
 ```bash
-# из директории где лежат gowitness.sqlite3 и screenshots/
+# from the directory with gowitness.sqlite3 and screenshots/
 gowitness-new report server
 
-# или с явными путями
+# with explicit paths
 gowitness-new report server \
   --db-uri "sqlite://gowitness.sqlite3" \
   --screenshot-path ./screenshots \
   --port 7171
 ```
 
-Открыть `http://127.0.0.1:7171` в браузере.
+Open `http://127.0.0.1:7171` in your browser.
 
-Все остальные команды gowitness (`scan`, `single`, `nmap` и т.д.) работают без изменений.
+All standard gowitness commands work as usual:
 
-## Что добавлено
-
-### Теги на каждой карточке
-
-На каждом скриншоте в галерее — строка кнопок-тегов:
-
-| Тег | Цвет | Назначение |
-|-----|------|------------|
-| ✓ Done | зелёный | отсмотрел, неинтересно |
-| ⚠ Attention | красный | требует внимания, вернуться |
-| ★ Interesting | жёлтый | интересный хост |
-| ☠ Vuln | фиолетовый | найдена уязвимость |
-| 🗑 Junk | серый | мусор (карточка затухает) |
-
-Клик на активный тег снимает его. Цветная полоска слева показывает статус.
-
-### Комментарии
-
-Текстовое поле под каждой карточкой. Автосохранение через 0.8 сек после ввода.
-
-### Фильтры
-
-В тулбаре — пилюли с подсчётом по каждому статусу. Кликнуть = показать только хосты с этим тегом.
-
-### Detail страница
-
-При клике на скриншот — блок "Review" сверху левой колонки с кнопками тегов и полем комментария.
-
-## Горячие клавиши
-
-| Клавиша | Действие |
-|---------|----------|
-| `J` / `K` | навигация вниз / вверх по карточкам |
-| `1` | ✓ Done |
-| `2` | ⚠ Attention |
-| `3` | ★ Interesting |
-| `4` | ☠ Vuln |
-| `5` | 🗑 Junk |
-| `0` | снять тег |
-| `C` | фокус на комментарий |
-| `Esc` | выйти из комментария |
-| `←` / `→` | предыдущая / следующая страница |
+```bash
+gowitness-new scan single --url https://example.com
+gowitness-new scan nmap -f nmap.xml
+gowitness-new scan file -f urls.txt
+```
 
 ## API
 
 ```
-GET  /api/review/stats          — статистика (кол-во по каждому статусу)
-GET  /api/review/export         — markdown экспорт всех комментов и важных тегов
-GET  /api/review/{id}           — получить review для хоста
-POST /api/review/{id}           — {"status":"attention","comment":"текст"}
-POST /api/review/bulk           — {"ids":[1,2,3],"status":"junk"}
-GET  /api/results/gallery?review=attention  — фильтр галереи по статусу
+GET  /api/review/stats             stats per status
+GET  /api/review/export            markdown export of tagged/commented hosts
+GET  /api/review/{id}              get review for a result
+POST /api/review/{id}              {"status":"attention","comment":"text"}
+POST /api/review/bulk              {"ids":[1,2,3],"status":"junk"}
+GET  /api/results/gallery?review=  filter: done|attention|interesting|vuln|junk|unseen|commented
 ```
 
-Допустимые значения `status`: `done`, `attention`, `interesting`, `vuln`, `junk`, пустая строка (снять).
+Valid `status` values: `done`, `attention`, `interesting`, `vuln`, `junk`, or empty string to clear.
 
-## Где хранятся данные
+## Data Storage
 
-Таблица `reviews` создаётся автоматически в той же `gowitness.sqlite3`. Оригинальные данные gowitness не затрагиваются.
+A `reviews` table is created automatically in the same gowitness database. Original gowitness data is never modified.
 
-## Сборка из исходников
+## Build from Source
 
 ```bash
-# клонировать gowitness
-git clone --depth 1 --branch 3.1.1 https://github.com/sensepost/gowitness.git
-cd gowitness
+git clone https://github.com/dhudhsgs93-arch/gowitness-new.git
+cd gowitness-new
 
-# применить патч (если есть .patch файл)
-# git apply gowitness-review.patch
-
-# собрать фронтенд
+# build frontend
 cd web/ui && npm install && npm run build && cd ../..
 
-# собрать бинарник
+# build binary
 CGO_ENABLED=0 go build -o gowitness-new .
 ```
 
-Требования: Go 1.21+, Node 18+.
+Requirements: Go 1.21+, Node 18+.
+
+## License
+
+Same as [gowitness](https://github.com/sensepost/gowitness) — GPL-3.0.
