@@ -24,11 +24,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 
 const REVIEW_STATUSES = [
-  { key: 'done', icon: CheckCircle2Icon, label: 'Done', color: 'text-green-500', bg: 'bg-green-500/10 border-green-500/30', hotkey: '1' },
-  { key: 'attention', icon: AlertTriangleIcon, label: 'Attention', color: 'text-red-500', bg: 'bg-red-500/10 border-red-500/30', hotkey: '2' },
-  { key: 'interesting', icon: StarIcon, label: 'Interesting', color: 'text-yellow-500', bg: 'bg-yellow-500/10 border-yellow-500/30', hotkey: '3' },
-  { key: 'vuln', icon: SkullIcon, label: 'Vuln', color: 'text-purple-500', bg: 'bg-purple-500/10 border-purple-500/30', hotkey: '4' },
-  { key: 'junk', icon: Trash2Icon, label: 'Junk', color: 'text-gray-500', bg: 'bg-gray-500/10 border-gray-500/30', hotkey: '5' },
+  { key: 'done', icon: CheckCircle2Icon, label: 'Done', color: 'text-green-500', bg: 'bg-green-500/10 border-green-500/30' },
+  { key: 'attention', icon: AlertTriangleIcon, label: 'Attention', color: 'text-red-500', bg: 'bg-red-500/10 border-red-500/30' },
+  { key: 'interesting', icon: StarIcon, label: 'Interesting', color: 'text-yellow-500', bg: 'bg-yellow-500/10 border-yellow-500/30' },
+  { key: 'vuln', icon: SkullIcon, label: 'Vuln', color: 'text-purple-500', bg: 'bg-purple-500/10 border-purple-500/30' },
+  { key: 'junk', icon: Trash2Icon, label: 'Junk', color: 'text-gray-500', bg: 'bg-gray-500/10 border-gray-500/30' },
 ] as const;
 
 const BATCH_SIZE = 48;
@@ -53,8 +53,6 @@ const GalleryPage = () => {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [reviewStats, setReviewStats] = useState<apitypes.reviewStats>();
-  const [focusedIdx, setFocusedIdx] = useState(-1);
-  const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
   const saveTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const pageRef = useRef(1);
   const hasMoreRef = useRef(true);
@@ -142,44 +140,6 @@ const GalleryPage = () => {
     return () => observer.disconnect();
   }, [loadBatch, loadingMore, loading]);
 
-  // Keyboard handler
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && event.target instanceof HTMLTextAreaElement) {
-        (event.target as HTMLTextAreaElement).blur();
-        return;
-      }
-      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
-
-      if (event.key === 'j' || event.key === 'ArrowDown') {
-        event.preventDefault();
-        setFocusedIdx(prev => {
-          const next = Math.min(prev + 1, (gallery?.length || 1) - 1);
-          cardRefs.current[next]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          return next;
-        });
-      } else if (event.key === 'k' || event.key === 'ArrowUp') {
-        event.preventDefault();
-        setFocusedIdx(prev => {
-          const next = Math.max(prev - 1, 0);
-          cardRefs.current[next]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          return next;
-        });
-      } else if (event.key === 'c' && focusedIdx >= 0 && gallery) {
-        cardRefs.current[focusedIdx]?.querySelector('textarea')?.focus();
-      } else if (event.key === '0' && focusedIdx >= 0 && gallery) {
-        setReviewStatus(gallery[focusedIdx].id, focusedIdx, '');
-      } else {
-        const statusMatch = REVIEW_STATUSES.find(s => s.hotkey === event.key);
-        if (statusMatch && focusedIdx >= 0 && gallery) {
-          setReviewStatus(gallery[focusedIdx].id, focusedIdx, statusMatch.key);
-        }
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [focusedIdx, gallery]);
 
   const handleTechnologyChange = (tech: string) => {
     const field = "technologies";
@@ -279,15 +239,7 @@ const GalleryPage = () => {
     const rawDate = format(probedDate, "PPpp");
 
     return (
-      <div
-        key={screenshot.id}
-        ref={el => { cardRefs.current[idx] = el; }}
-        className={cn(
-          "transition-all",
-          focusedIdx === idx && "ring-2 ring-blue-500 rounded-lg"
-        )}
-        onClick={() => setFocusedIdx(idx)}
-      >
+      <div key={screenshot.id}>
         <Card className={cn(
           "group overflow-hidden transition-all hover:shadow-lg flex flex-col h-full",
           getReviewBorderColor(screenshot.review_status)
@@ -312,7 +264,7 @@ const GalleryPage = () => {
                       </button>
                     </TooltipTrigger>
                     <TooltipContent side="bottom" className="text-xs">
-                      <p>{s.label} ({s.hotkey})</p>
+                      <p>{s.label}</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
