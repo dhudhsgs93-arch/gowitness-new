@@ -58,7 +58,7 @@ const GalleryPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   // pagination
   const page = parseInt(searchParams.get("page") || "1");
-  const limit = parseInt(searchParams.get("limit") || "24");
+  const limit = parseInt(searchParams.get("limit") || "96");
   //filters
   const technologyFilter = searchParams.get("technologies") || "";
   const statusFilter = searchParams.get("status") || "";
@@ -589,7 +589,8 @@ const GalleryPage = () => {
             <SelectItem value="12">12</SelectItem>
             <SelectItem value="24">24</SelectItem>
             <SelectItem value="48">48</SelectItem>
-            <SelectItem value="96">96</SelectItem>
+            <SelectItem value="96" >96</SelectItem>
+            <SelectItem value="192">192</SelectItem>
           </SelectContent>
         </Select>
 

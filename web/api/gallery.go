@@ -51,7 +51,7 @@ type galleryContent struct {
 func (h *ApiHandler) GalleryHandler(w http.ResponseWriter, r *http.Request) {
 	var results = &galleryResponse{
 		Page:  1,
-		Limit: 24,
+		Limit: 96,
 	}
 
 	// pagination
