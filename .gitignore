@@ -1,0 +1,6 @@
+gowitness-new
+gowitness
+*.sqlite3
+screenshots/
+web/ui/node_modules/
+profiles/
