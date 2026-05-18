@@ -85,6 +85,7 @@ func (s *Server) Run() {
 		r.Post("/review/bulk", apih.ReviewBulkHandler)
 		r.Get("/review/stats", apih.ReviewStatsHandler)
 		r.Get("/review/export", apih.ReviewExportHandler)
+		r.Get("/review/export-urls", apih.ReviewExportURLsHandler)
 		r.Post("/review/{id}", apih.ReviewSetHandler)
 		r.Get("/review/{id}", apih.ReviewGetHandler)
 	})

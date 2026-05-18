@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   AlertOctagonIcon, BanIcon, CheckIcon, ClockIcon, ExternalLinkIcon,
   FilterIcon, GroupIcon, ShieldCheckIcon, XIcon, CheckCircle2Icon, AlertTriangleIcon, StarIcon, SkullIcon, Trash2Icon, MessageSquareIcon,
-  LoaderIcon
+  LoaderIcon, CopyIcon, DownloadIcon, CheckSquareIcon, SquareIcon
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -53,6 +53,8 @@ const GalleryPage = () => {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [reviewStats, setReviewStats] = useState<apitypes.reviewStats>();
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [selectMode, setSelectMode] = useState(false);
   const saveTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const pageRef = useRef(1);
   const hasMoreRef = useRef(true);
@@ -113,6 +115,7 @@ const GalleryPage = () => {
   useEffect(() => {
     pageRef.current = 1;
     hasMoreRef.current = true;
+    setSelected(new Set());
     loadBatch(1, true);
     loadReviewStats();
   }, [technologyFilter, statusFilter, perceptionGroup, showFailed, reviewFilter]);
@@ -139,7 +142,6 @@ const GalleryPage = () => {
     observer.observe(sentinel);
     return () => observer.disconnect();
   }, [loadBatch, loadingMore, loading]);
-
 
   const handleTechnologyChange = (tech: string) => {
     const field = "technologies";
@@ -224,6 +226,49 @@ const GalleryPage = () => {
     saveTimers.current[resultId] = setTimeout(() => saveComment(resultId, idx, value), 800);
   };
 
+  // Bulk select
+  const toggleSelect = (id: number) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    if (!gallery) return;
+    setSelected(new Set(gallery.map(g => g.id)));
+  };
+
+  const selectNone = () => setSelected(new Set());
+
+  const bulkTag = async (status: string) => {
+    if (selected.size === 0) return;
+    try {
+      await api.post('reviewBulk', { ids: Array.from(selected), status });
+      setGallery(prev => prev?.map(g => selected.has(g.id) ? { ...g, review_status: status } : g));
+      setSelected(new Set());
+      setSelectMode(false);
+      loadReviewStats();
+      toast({ title: `Tagged ${selected.size} items as ${status || 'cleared'}` });
+    } catch {
+      toast({ title: "Error", description: "Bulk tag failed", variant: "destructive" });
+    }
+  };
+
+  // Copy URL
+  const copyUrl = (url: string) => {
+    navigator.clipboard.writeText(url);
+    toast({ title: "Copied", description: url, duration: 1500 });
+  };
+
+  // Export URLs
+  const exportUrls = () => {
+    const params = new URLSearchParams();
+    if (reviewFilter) params.set("review", reviewFilter);
+    window.open(`/api/review/export-urls?${params.toString()}`, '_blank');
+  };
+
   const sortedTechnologies = useMemo(() => {
     if (!technology) return [];
     const selectedTechnologies = technologyFilter.split(',').filter(Boolean);
@@ -237,12 +282,25 @@ const GalleryPage = () => {
     const probedDate = new Date(screenshot.probed_at);
     const timeAgo = formatDistanceToNow(probedDate, { addSuffix: true });
     const rawDate = format(probedDate, "PPpp");
+    const isSelected = selected.has(screenshot.id);
 
     return (
-      <div key={screenshot.id}>
+      <div key={screenshot.id} className="relative">
+        {selectMode && (
+          <button
+            onClick={() => toggleSelect(screenshot.id)}
+            className={cn(
+              "absolute top-0 left-0 z-20 p-1.5 rounded-br-lg transition-colors",
+              isSelected ? "bg-blue-500 text-white" : "bg-black/60 text-gray-300 hover:text-white"
+            )}
+          >
+            {isSelected ? <CheckSquareIcon className="w-4 h-4" /> : <SquareIcon className="w-4 h-4" />}
+          </button>
+        )}
         <Card className={cn(
           "group overflow-hidden transition-all hover:shadow-lg flex flex-col h-full",
-          getReviewBorderColor(screenshot.review_status)
+          getReviewBorderColor(screenshot.review_status),
+          isSelected && selectMode && "ring-2 ring-blue-500"
         )}>
           {/* Review tag bar */}
           <div className="flex items-center gap-1 px-2 py-1 border-b" onClick={e => e.stopPropagation()}>
@@ -316,8 +374,25 @@ const GalleryPage = () => {
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-              <div className="w-full truncate text-xs text-muted-foreground mt-0.5">
-                {screenshot.url}
+              <div className="w-full flex items-center gap-1 mt-0.5">
+                <div className="truncate text-xs text-muted-foreground flex-1">
+                  {screenshot.url}
+                </div>
+                <TooltipProvider delayDuration={0}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={(e) => { e.preventDefault(); copyUrl(screenshot.url); }}
+                        className="shrink-0 p-0.5 rounded hover:bg-muted transition-colors"
+                      >
+                        <CopyIcon className="w-3 h-3 text-muted-foreground hover:text-foreground" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="text-xs">
+                      <p>Copy URL</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
             </div>
             <div className="w-full flex items-center justify-between mt-1">
@@ -375,12 +450,49 @@ const GalleryPage = () => {
     );
   };
 
-
-
   if (loading) return <WideSkeleton />;
 
   return (
     <div className="space-y-6">
+      {/* Bulk select bar */}
+      {selectMode && (
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-muted border">
+          <span className="text-sm font-medium">{selected.size} selected</span>
+          <Button variant="outline" size="sm" onClick={selectAll} className="h-7 text-xs">All</Button>
+          <Button variant="outline" size="sm" onClick={selectNone} className="h-7 text-xs">None</Button>
+          <div className="border-l h-5 mx-1" />
+          {REVIEW_STATUSES.map(s => {
+            const Icon = s.icon;
+            return (
+              <TooltipProvider key={s.key} delayDuration={0}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => bulkTag(s.key)}
+                      disabled={selected.size === 0}
+                      className="h-7 text-xs"
+                    >
+                      <Icon className={cn("w-3 h-3 mr-1", s.color)} />
+                      {s.label}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent className="text-xs"><p>Tag selected as {s.label}</p></TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            );
+          })}
+          <Button variant="outline" size="sm" onClick={() => bulkTag('')} disabled={selected.size === 0} className="h-7 text-xs">
+            <XIcon className="w-3 h-3 mr-1" /> Clear tag
+          </Button>
+          <div className="flex-1" />
+          <Button variant="ghost" size="sm" onClick={() => { setSelectMode(false); setSelected(new Set()); }} className="h-7 text-xs">
+            Cancel
+          </Button>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-4 items-center justify-between rounded-lg">
         <div className="flex flex-wrap gap-2">
           <Popover>
@@ -505,8 +617,23 @@ const GalleryPage = () => {
             </Button>
           </div>
         </div>
-        <div className="text-sm text-muted-foreground">
-          {gallery.length} / {totalCount}
+        <div className="flex items-center gap-2">
+          <Button
+            variant={selectMode ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => { setSelectMode(!selectMode); if (selectMode) setSelected(new Set()); }}
+            className="h-7 text-xs"
+          >
+            <CheckSquareIcon className="w-3 h-3 mr-1" />
+            Select
+          </Button>
+          <Button variant="outline" size="sm" onClick={exportUrls} className="h-7 text-xs">
+            <DownloadIcon className="w-3 h-3 mr-1" />
+            Export URLs
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            {gallery.length} / {totalCount}
+          </span>
         </div>
       </div>
 

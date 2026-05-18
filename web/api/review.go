@@ -194,6 +194,43 @@ func (h *ApiHandler) ReviewStatsHandler(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(resp)
 }
 
+// ReviewExportURLsHandler exports URLs filtered by review status as plain text
+//
+//	@Summary		Export URLs
+//	@Description	Export URLs filtered by review status as plain text (one per line).
+//	@Tags			Reviews
+//	@Produce		text/plain
+//	@Param			review	query	string	false	"Filter by review status."
+//	@Router			/review/export-urls [get]
+func (h *ApiHandler) ReviewExportURLsHandler(w http.ResponseWriter, r *http.Request) {
+	reviewFilter := r.URL.Query().Get("review")
+
+	var urls []string
+	query := h.DB.Model(&models.Result{}).Select("url").Where("failed = ?", false)
+
+	if reviewFilter != "" {
+		switch reviewFilter {
+		case "unseen":
+			query.Where("id NOT IN (?)", h.DB.Model(&models.Review{}).
+				Select("result_id").Where("status != ''"))
+		case "commented":
+			query.Where("id IN (?)", h.DB.Model(&models.Review{}).
+				Select("result_id").Where("comment != ''"))
+		default:
+			query.Where("id IN (?)", h.DB.Model(&models.Review{}).
+				Select("result_id").Where("status = ?", reviewFilter))
+		}
+	}
+
+	query.Find(&urls)
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", "attachment; filename=urls.txt")
+	for _, u := range urls {
+		w.Write([]byte(u + "\n"))
+	}
+}
+
 // ReviewExportHandler exports all reviews as markdown
 //
 //	@Summary		Export reviews
