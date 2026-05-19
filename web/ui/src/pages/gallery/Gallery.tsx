@@ -497,10 +497,11 @@ const GalleryPage = () => {
   if (loading) return <WideSkeleton />;
 
   return (
-    <>
-      {/* Bulk select bar — fixed at top */}
+    <div>
+      <div className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b pb-3 -mx-4 px-4 pt-3">
+      {/* Bulk select bar */}
       {selectMode && (
-        <div className="fixed top-0 left-0 right-0 z-50 flex items-center gap-2 p-3 bg-background/95 backdrop-blur border-b shadow-md">
+        <div className="flex items-center gap-2 p-2 rounded-lg bg-muted border mb-2">
           <span className="text-sm font-medium">{selected.size} selected</span>
           <Button variant="outline" size="sm" onClick={selectAll} className="h-7 text-xs">All</Button>
           <Button variant="outline" size="sm" onClick={selectNone} className="h-7 text-xs">None</Button>
@@ -536,8 +537,6 @@ const GalleryPage = () => {
           </Button>
         </div>
       )}
-
-      <div className={cn("space-y-6", selectMode && "pt-14")}>
       <div className="flex flex-wrap gap-4 items-center justify-between rounded-lg">
         <div className="flex flex-wrap gap-2">
           <Popover>
@@ -690,8 +689,9 @@ const GalleryPage = () => {
           </span>
         </div>
       </div>
+      </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 pt-4">
         {gallery?.map((screenshot, idx) => renderGalleryCard(screenshot, idx))}
       </div>
 
@@ -708,7 +708,6 @@ const GalleryPage = () => {
         )}
       </div>
     </div>
-    </>
   );
 };
 
