@@ -104,6 +104,9 @@ func (h *ApiHandler) GalleryHandler(w http.ResponseWriter, r *http.Request) {
 	// review status filtering
 	reviewFilter := r.URL.Query().Get("review")
 
+	// sort order
+	sortOrder := r.URL.Query().Get("sort")
+
 	// query the db
 	var queryResults []*models.Result
 	query := h.DB.Model(&models.Result{}).Limit(results.Limit).
@@ -111,6 +114,13 @@ func (h *ApiHandler) GalleryHandler(w http.ResponseWriter, r *http.Request) {
 
 	if perceptionSort {
 		query.Order("perception_hash_group_id DESC")
+	}
+
+	switch sortOrder {
+	case "newest":
+		query.Order("probed_at DESC")
+	case "oldest":
+		query.Order("probed_at ASC")
 	}
 
 	if len(statusCodes) > 0 {

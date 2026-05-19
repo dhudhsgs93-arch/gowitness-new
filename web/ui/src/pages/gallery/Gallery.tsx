@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   AlertOctagonIcon, BanIcon, CheckIcon, ClockIcon, ExternalLinkIcon,
   FilterIcon, GroupIcon, ShieldCheckIcon, XIcon, CheckCircle2Icon, AlertTriangleIcon, StarIcon, SkullIcon, Trash2Icon, MessageSquareIcon,
-  LoaderIcon, CopyIcon, DownloadIcon, CheckSquareIcon, SquareIcon
+  LoaderIcon, CopyIcon, DownloadIcon, CheckSquareIcon, SquareIcon, ArrowDownUpIcon
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -66,6 +66,7 @@ const GalleryPage = () => {
   const reviewFilter = searchParams.get("review") || "";
   const perceptionGroup = searchParams.get("perception") === "true";
   const showFailed = searchParams.get("failed") !== "false";
+  const sortOrder = searchParams.get("sort") || "";
 
   const loadReviewStats = useCallback(async () => {
     try {
@@ -91,6 +92,7 @@ const GalleryPage = () => {
         failed: showFailed ? 'true' : 'false',
       };
       if (reviewFilter) params.review = reviewFilter;
+      if (sortOrder) params.sort = sortOrder;
 
       const s = await api.get('gallery', params);
       const newResults = s.results || [];
@@ -109,7 +111,7 @@ const GalleryPage = () => {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [technologyFilter, statusFilter, perceptionGroup, showFailed, reviewFilter]);
+  }, [technologyFilter, statusFilter, perceptionGroup, showFailed, reviewFilter, sortOrder]);
 
   // Initial load + reload on filter change
   useEffect(() => {
@@ -118,7 +120,7 @@ const GalleryPage = () => {
     setSelected(new Set());
     loadBatch(1, true);
     loadReviewStats();
-  }, [technologyFilter, statusFilter, perceptionGroup, showFailed, reviewFilter]);
+  }, [technologyFilter, statusFilter, perceptionGroup, showFailed, reviewFilter, sortOrder]);
 
   useEffect(() => {
     getWappalyzerData(setWappalyzer, setTechnology);
@@ -180,6 +182,16 @@ const GalleryPage = () => {
   const handleToggleShowFailed = () => {
     setSearchParams(prev => {
       prev.set("failed", (!showFailed).toString());
+      return prev;
+    });
+  };
+
+  const handleSort = () => {
+    setSearchParams(prev => {
+      const current = prev.get("sort") || "";
+      if (current === "") prev.set("sort", "newest");
+      else if (current === "newest") prev.set("sort", "oldest");
+      else prev.delete("sort");
       return prev;
     });
   };
@@ -486,9 +498,9 @@ const GalleryPage = () => {
 
   return (
     <div className="space-y-6">
-      {/* Bulk select bar */}
+      {/* Bulk select bar — sticky */}
       {selectMode && (
-        <div className="flex items-center gap-2 p-3 rounded-lg bg-muted border">
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-muted border sticky top-0 z-30 shadow-md">
           <span className="text-sm font-medium">{selected.size} selected</span>
           <Button variant="outline" size="sm" onClick={selectAll} className="h-7 text-xs">All</Button>
           <Button variant="outline" size="sm" onClick={selectNone} className="h-7 text-xs">None</Button>
@@ -650,6 +662,15 @@ const GalleryPage = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant={sortOrder ? "secondary" : "outline"}
+            size="sm"
+            onClick={handleSort}
+            className="h-7 text-xs"
+          >
+            <ArrowDownUpIcon className="w-3 h-3 mr-1" />
+            {sortOrder === 'newest' ? 'Newest' : sortOrder === 'oldest' ? 'Oldest' : 'Sort'}
+          </Button>
           <Button
             variant={selectMode ? "secondary" : "outline"}
             size="sm"
