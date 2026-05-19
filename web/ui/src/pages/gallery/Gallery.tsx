@@ -497,10 +497,10 @@ const GalleryPage = () => {
   if (loading) return <WideSkeleton />;
 
   return (
-    <div className="space-y-6">
-      {/* Bulk select bar — sticky */}
+    <>
+      {/* Bulk select bar — fixed at top */}
       {selectMode && (
-        <div className="flex items-center gap-2 p-3 rounded-lg bg-muted border sticky top-0 z-30 shadow-md">
+        <div className="fixed top-0 left-0 right-0 z-50 flex items-center gap-2 p-3 bg-background/95 backdrop-blur border-b shadow-md">
           <span className="text-sm font-medium">{selected.size} selected</span>
           <Button variant="outline" size="sm" onClick={selectAll} className="h-7 text-xs">All</Button>
           <Button variant="outline" size="sm" onClick={selectNone} className="h-7 text-xs">None</Button>
@@ -537,6 +537,7 @@ const GalleryPage = () => {
         </div>
       )}
 
+      <div className={cn("space-y-6", selectMode && "pt-14")}>
       <div className="flex flex-wrap gap-4 items-center justify-between rounded-lg">
         <div className="flex flex-wrap gap-2">
           <Popover>
@@ -707,6 +708,7 @@ const GalleryPage = () => {
         )}
       </div>
     </div>
+    </>
   );
 };
 
