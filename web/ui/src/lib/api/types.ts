@@ -182,6 +182,13 @@ interface technologylist {
   technologies: string[];
 }
 
+interface trashedHost {
+  id: number;
+  host: string;
+  created_at: string;
+  count: number;
+}
+
 export type {
   statistics,
   wappalyzer,
@@ -200,4 +207,5 @@ export type {
   reviewStats,
   searchresult,
   technologylist,
+  trashedHost,
 };

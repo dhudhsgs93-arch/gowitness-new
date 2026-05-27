@@ -4,6 +4,13 @@ import (
 	"time"
 )
 
+// TrashedHost is a hostname hidden from the gallery
+type TrashedHost struct {
+	ID        uint      `json:"id" gorm:"primarykey"`
+	Host      string    `json:"host" gorm:"uniqueIndex;not null"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // Review is a user review / tag for a result
 type Review struct {
 	ID        uint      `json:"id" gorm:"primarykey"`
@@ -26,6 +33,8 @@ type Result struct {
 	ID uint `json:"id" gorm:"primarykey"`
 
 	URL                   string    `json:"url"`
+	Hostname              string    `json:"hostname" gorm:"index;not null;default:''"`
+	RootDomain            string    `json:"root_domain" gorm:"index;not null;default:''"`
 	ProbedAt              time.Time `json:"probed_at"`
 	FinalURL              string    `json:"final_url"`
 	ResponseCode          int       `json:"response_code"`

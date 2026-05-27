@@ -1,6 +1,8 @@
 package writers
 
 import (
+	"net/url"
+	"strings"
 	"sync"
 
 	"github.com/sensepost/gowitness/internal/islazy"
@@ -9,6 +11,7 @@ import (
 	"github.com/sensepost/gowitness/pkg/models"
 	"gorm.io/gorm"
 )
+
 
 var hammingThreshold = 10
 
@@ -48,6 +51,14 @@ func (dw *DbWriter) Write(result *models.Result) error {
 		// if we couldn't get a perception hash, thats okay. maybe the
 		// screenshot failed.
 		log.Debug("could not get group id for perception hash", "hash", result.PerceptionHash)
+	}
+
+	// Populate hostname and root_domain from URL
+	if result.Hostname == "" && result.URL != "" {
+		result.Hostname = extractHostname(result.URL)
+	}
+	if result.RootDomain == "" && result.Hostname != "" {
+		result.RootDomain = database.ExtractRootDomain(result.Hostname)
 	}
 
 	return dw.conn.Create(result).Error
@@ -91,4 +102,19 @@ func (dw *DbWriter) AssignGroupID(perceptionHashStr string) (uint, error) {
 	dw.hammingGroups = append(dw.hammingGroups, newGroup)
 
 	return nextGroupID, nil
+}
+
+func extractHostname(rawURL string) string {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return ""
+	}
+	if !strings.Contains(rawURL, "://") {
+		rawURL = "https://" + rawURL
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(u.Hostname())
 }

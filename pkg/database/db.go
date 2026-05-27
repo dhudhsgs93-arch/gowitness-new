@@ -3,12 +3,14 @@ package database
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/glebarez/sqlite"
+	"golang.org/x/net/publicsuffix"
 	"github.com/sensepost/gowitness/pkg/models"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
@@ -84,11 +86,87 @@ func Connection(uri string, shouldExist, debug bool) (*gorm.DB, error) {
 		&models.ConsoleLog{},
 		&models.Cookie{},
 		&models.Review{},
+		&models.TrashedHost{},
 	); err != nil {
 		return nil, err
 	}
 
+	// Backfill hostname column for existing results
+	backfillHostnames(c)
+
 	return c, nil
+}
+
+// backfillHostnames populates the hostname and root_domain columns for results that don't have them
+func backfillHostnames(db *gorm.DB) {
+	var count int64
+	db.Model(&models.Result{}).Where("(hostname = '' OR root_domain = '') AND url != ''").Count(&count)
+	if count == 0 {
+		return
+	}
+
+	type idURL struct {
+		ID  uint
+		URL string
+	}
+
+	batchSize := 500
+	offset := 0
+	for {
+		var rows []idURL
+		db.Model(&models.Result{}).Select("id, url").
+			Where("(hostname = '' OR root_domain = '') AND url != ''").
+			Limit(batchSize).Offset(offset).Find(&rows)
+
+		if len(rows) == 0 {
+			break
+		}
+
+		for _, row := range rows {
+			h := extractHostname(row.URL)
+			rd := ExtractRootDomain(h)
+			db.Model(&models.Result{}).Where("id = ?", row.ID).Updates(map[string]interface{}{
+				"hostname":    h,
+				"root_domain": rd,
+			})
+		}
+
+		offset += batchSize
+	}
+}
+
+// extractHostname extracts and normalizes a hostname from a URL
+func extractHostname(rawURL string) string {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return ""
+	}
+	if !strings.Contains(rawURL, "://") {
+		rawURL = "https://" + rawURL
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(u.Hostname())
+}
+
+// ExtractRootDomain returns the eTLD+1 (registrable domain) from a hostname.
+// e.g. "api.dlive.tv" -> "dlive.tv", "192.168.1.1" -> "192.168.1.1"
+func ExtractRootDomain(hostname string) string {
+	if hostname == "" {
+		return ""
+	}
+	// If it's an IP address, return as-is
+	if net.ParseIP(hostname) != nil {
+		return hostname
+	}
+	rd, err := publicsuffix.EffectiveTLDPlusOne(hostname)
+	if err != nil {
+		// Fallback: return hostname as-is
+		return hostname
+	}
+	return rd
 }
 
 func convertMySQLURItoDSN(uri string) (string, error) {

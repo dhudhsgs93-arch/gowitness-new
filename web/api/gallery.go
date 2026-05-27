@@ -112,6 +112,9 @@ func (h *ApiHandler) GalleryHandler(w http.ResponseWriter, r *http.Request) {
 	query := h.DB.Model(&models.Result{}).Limit(results.Limit).
 		Offset(offset).Preload("Technologies").Preload("Review")
 
+	// Exclude trashed domains (substring match)
+	query.Where("NOT EXISTS (SELECT 1 FROM trashed_hosts th WHERE results.hostname LIKE '%' || th.host || '%')")
+
 	if perceptionSort {
 		query.Order("perception_hash_group_id DESC")
 	}
@@ -188,6 +191,8 @@ func (h *ApiHandler) GalleryHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Build a count query with the same filters (without limit/offset)
 	countQuery := h.DB.Model(&models.Result{})
+	// Exclude trashed hosts from count (substring match)
+	countQuery.Where("NOT EXISTS (SELECT 1 FROM trashed_hosts th WHERE results.hostname LIKE '%' || th.host || '%')")
 	if len(statusCodes) > 0 {
 		countQuery.Where("response_code IN ?", statusCodes)
 	}

@@ -1,4 +1,4 @@
-import { gallery, list, statistics, wappalyzer, detail, searchresult, technologylist, review, reviewStats } from "@/lib/api/types";
+import { gallery, list, statistics, wappalyzer, detail, searchresult, technologylist, review, reviewStats, trashedHost } from "@/lib/api/types";
 
 const endpoints = {
   // api base path
@@ -60,6 +60,24 @@ const endpoints = {
     returnas: {} as reviewStats
   },
 
+  // trash endpoints
+  trashList: {
+    path: `/trash`,
+    returnas: [] as trashedHost[]
+  },
+  trashAdd: {
+    path: `/trash`,
+    returnas: {} as { ok: boolean; trashed_host: trashedHost }
+  },
+  trashRestore: {
+    path: `/trash/restore`,
+    returnas: {} as { ok: boolean }
+  },
+  trashSuggest: {
+    path: `/trash/suggest`,
+    returnas: [] as string[]
+  },
+
   // post endpoints
   search: {
     path: `/search`,
@@ -68,6 +86,10 @@ const endpoints = {
   delete: {
     path: `/results/delete`,
     returnas: "" as string
+  },
+  deleteBulk: {
+    path: `/results/delete-bulk`,
+    returnas: {} as { ok: boolean; count: number }
   },
   submit: {
     path: `/submit`,

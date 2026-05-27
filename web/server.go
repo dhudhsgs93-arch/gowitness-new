@@ -80,7 +80,15 @@ func (s *Server) Run() {
 		r.Get("/results/list", apih.ListHandler)
 		r.Get("/results/detail/{id}", apih.DetailHandler)
 		r.Post("/results/delete", apih.DeleteResultHandler)
+		r.Post("/results/delete-bulk", apih.DeleteBulkHandler)
 		r.Get("/results/technology", apih.TechnologyListHandler)
+
+		r.Route("/trash", func(r chi.Router) {
+			r.Post("/", apih.TrashAddHandler)
+			r.Get("/", apih.TrashListHandler)
+			r.Post("/restore", apih.TrashRestoreHandler)
+			r.Get("/suggest", apih.TrashSuggestHandler)
+		})
 
 		r.Post("/review/bulk", apih.ReviewBulkHandler)
 		r.Get("/review/stats", apih.ReviewStatsHandler)

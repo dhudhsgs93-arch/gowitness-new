@@ -12,6 +12,10 @@ type deleteResultRequest struct {
 	ID int `json:"id"`
 }
 
+type deleteBulkRequest struct {
+	IDs []int `json:"ids"`
+}
+
 // DeleteResultHandler deletes results from the database
 //
 //	@Summary		Delete a result
@@ -45,4 +49,29 @@ func (h *ApiHandler) DeleteResultHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	w.Write(jsonData)
+}
+
+// DeleteBulkHandler deletes multiple results by IDs
+func (h *ApiHandler) DeleteBulkHandler(w http.ResponseWriter, r *http.Request) {
+	var request deleteBulkRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		log.Error("failed to read json request", "err", err)
+		http.Error(w, "Error reading JSON request", http.StatusInternalServerError)
+		return
+	}
+
+	if len(request.IDs) == 0 {
+		json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "count": 0})
+		return
+	}
+
+	log.Info("bulk deleting", "count", len(request.IDs))
+
+	if err := h.DB.Delete(&models.Result{}, request.IDs).Error; err != nil {
+		log.Error("failed to bulk delete results", "err", err)
+		http.Error(w, "Error deleting results", http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "count": len(request.IDs)})
 }

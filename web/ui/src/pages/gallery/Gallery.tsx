@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   AlertOctagonIcon, BanIcon, CheckIcon, ClockIcon, ExternalLinkIcon,
   FilterIcon, GroupIcon, ShieldCheckIcon, XIcon, CheckCircle2Icon, AlertTriangleIcon, StarIcon, SkullIcon, Trash2Icon, MessageSquareIcon,
-  LoaderIcon, CopyIcon, DownloadIcon, CheckSquareIcon, SquareIcon, ArrowDownUpIcon
+  LoaderIcon, CopyIcon, DownloadIcon, CheckSquareIcon, SquareIcon, ArrowDownUpIcon, EyeOffIcon, UndoIcon
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -56,6 +56,10 @@ const GalleryPage = () => {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [selectMode, setSelectMode] = useState(false);
   const saveTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  const [trashedHosts, setTrashedHosts] = useState<apitypes.trashedHost[]>([]);
+  const [trashSuggestions, setTrashSuggestions] = useState<string[]>([]);
+  const [trashInput, setTrashInput] = useState('');
+  const trashDebounce = useRef<ReturnType<typeof setTimeout>>();
   const pageRef = useRef(1);
   const hasMoreRef = useRef(true);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -74,6 +78,62 @@ const GalleryPage = () => {
       setReviewStats(stats);
     } catch { /* ignore */ }
   }, []);
+
+  const loadTrashedHosts = useCallback(async () => {
+    try {
+      const hosts = await api.get('trashList');
+      setTrashedHosts(hosts);
+    } catch { /* ignore */ }
+  }, []);
+
+  const trashHost = async (host: string) => {
+    if (!host.trim()) return;
+    try {
+      await api.post('trashAdd', { host: host.trim() });
+      setTrashInput('');
+      setTrashSuggestions([]);
+      loadTrashedHosts();
+      // Reload gallery to reflect hidden host
+      pageRef.current = 1;
+      hasMoreRef.current = true;
+      loadBatch(1, true);
+      loadReviewStats();
+      toast({ title: `Hidden: ${host.trim()}`, duration: 2000 });
+    } catch {
+      toast({ title: "Error", description: "Failed to hide host", variant: "destructive" });
+    }
+  };
+
+  const restoreHost = async (id: number) => {
+    try {
+      await api.post('trashRestore', { id });
+      loadTrashedHosts();
+      pageRef.current = 1;
+      hasMoreRef.current = true;
+      loadBatch(1, true);
+      loadReviewStats();
+      toast({ title: "Host restored", duration: 1500 });
+    } catch {
+      toast({ title: "Error", description: "Failed to restore host", variant: "destructive" });
+    }
+  };
+
+  const searchTrashSuggestions = (q: string) => {
+    setTrashInput(q);
+    if (trashDebounce.current) clearTimeout(trashDebounce.current);
+    trashDebounce.current = setTimeout(async () => {
+      if (q.trim().length < 1) {
+        setTrashSuggestions([]);
+        return;
+      }
+      try {
+        const suggestions = await api.get('trashSuggest', { q: q.trim() });
+        setTrashSuggestions(suggestions);
+      } catch {
+        setTrashSuggestions([]);
+      }
+    }, 300);
+  };
 
   // Load a batch of results
   const loadBatch = useCallback(async (page: number, reset: boolean) => {
@@ -124,6 +184,7 @@ const GalleryPage = () => {
 
   useEffect(() => {
     getWappalyzerData(setWappalyzer, setTechnology);
+    loadTrashedHosts();
   }, []);
 
   // Infinite scroll via IntersectionObserver
@@ -498,7 +559,7 @@ const GalleryPage = () => {
 
   return (
     <div>
-      <div className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b pb-3 -mx-4 px-4 pt-3">
+      <div className="sticky top-16 z-40 bg-background/95 backdrop-blur border-b pb-3 -mx-4 px-4 pt-3">
       {/* Bulk select bar */}
       {selectMode && (
         <div className="flex items-center gap-2 p-2 rounded-lg bg-muted border mb-2">
@@ -680,6 +741,74 @@ const GalleryPage = () => {
             <CheckSquareIcon className="w-3 h-3 mr-1" />
             Select
           </Button>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="h-7 text-xs">
+                <EyeOffIcon className="w-3 h-3 mr-1" />
+                Hide host
+                {trashedHosts.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">{trashedHosts.length}</Badge>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[340px] p-0" align="end">
+              <div className="p-3 border-b">
+                <div className="text-sm font-medium mb-2">Hide host from gallery</div>
+                <div className="relative">
+                  <Command className="rounded-lg border" shouldFilter={false}>
+                    <CommandInput
+                      placeholder="Type hostname..."
+                      value={trashInput}
+                      onValueChange={searchTrashSuggestions}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && trashInput.trim()) {
+                          e.preventDefault();
+                          trashHost(trashInput);
+                        }
+                      }}
+                    />
+                    {trashSuggestions.length > 0 && (
+                      <CommandList>
+                        <CommandGroup>
+                          {trashSuggestions.map(host => (
+                            <CommandItem key={host} onSelect={() => trashHost(host)} className="text-xs font-mono">
+                              <EyeOffIcon className="w-3 h-3 mr-2 text-muted-foreground" />
+                              {host}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    )}
+                  </Command>
+                </div>
+              </div>
+              {trashedHosts.length > 0 && (
+                <div className="max-h-[240px] overflow-y-auto">
+                  <div className="px-3 py-2 text-xs text-muted-foreground font-medium">
+                    Hidden hosts ({trashedHosts.length})
+                  </div>
+                  {trashedHosts.map(th => (
+                    <div key={th.id} className="flex items-center justify-between px-3 py-1.5 hover:bg-muted text-xs group">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <EyeOffIcon className="w-3 h-3 text-muted-foreground shrink-0" />
+                        <span className="font-mono truncate">{th.host}</span>
+                        <span className="text-muted-foreground shrink-0">({th.count})</span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => restoreHost(th.id)}
+                        className="h-5 px-1.5 text-xs opacity-0 group-hover:opacity-100"
+                      >
+                        <UndoIcon className="w-3 h-3 mr-1" />
+                        Restore
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
           <Button variant="outline" size="sm" onClick={exportUrls} className="h-7 text-xs">
             <DownloadIcon className="w-3 h-3 mr-1" />
             Export URLs
@@ -687,6 +816,12 @@ const GalleryPage = () => {
           <span className="text-sm text-muted-foreground">
             {gallery.length} / {totalCount}
           </span>
+          {trashedHosts.length > 0 && (
+            <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
+              <EyeOffIcon className="w-3 h-3 inline mr-1" />
+              {trashedHosts.reduce((sum, h) => sum + h.count, 0)} hidden
+            </span>
+          )}
         </div>
       </div>
       </div>
