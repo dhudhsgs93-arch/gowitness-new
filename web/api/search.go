@@ -30,6 +30,8 @@ type searchResult struct {
 	Filename       string   `json:"file_name"`
 	Screenshot     string   `json:"screenshot"`
 	MatchedFields  []string `json:"matched_fields"`
+	ReviewStatus   string   `json:"review_status"`
+	ReviewComment  string   `json:"review_comment"`
 }
 
 // searchOperators are the operators we support. everything else is
@@ -147,6 +149,26 @@ func (h *ApiHandler) SearchHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		searchResults = appendResults(searchResults, resultIDs, freeTextResults, "text")
+	}
+
+	// attach review status/comment so the search UI can filter/tag like the gallery
+	if len(searchResults) > 0 {
+		ids := make([]uint, 0, len(searchResults))
+		for _, sr := range searchResults {
+			ids = append(ids, sr.ID)
+		}
+		var reviews []models.Review
+		h.DB.Where("result_id IN ?", ids).Find(&reviews)
+		reviewByID := make(map[uint]models.Review, len(reviews))
+		for _, rv := range reviews {
+			reviewByID[rv.ResultID] = rv
+		}
+		for i := range searchResults {
+			if rv, ok := reviewByID[searchResults[i].ID]; ok {
+				searchResults[i].ReviewStatus = rv.Status
+				searchResults[i].ReviewComment = rv.Comment
+			}
+		}
 	}
 
 	jsonData, err := json.Marshal(searchResults)

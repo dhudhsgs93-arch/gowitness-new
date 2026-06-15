@@ -176,6 +176,8 @@ interface searchresult {
   matched_fields: string[];
   file_name: string;
   screenshot: string;
+  review_status: string;
+  review_comment: string;
 }
 
 interface technologylist {
