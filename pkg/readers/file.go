@@ -57,7 +57,13 @@ func (fr *FileReader) Read(ch chan<- string) error {
 	// determine any ports
 	ports := fr.ports()
 
+	// dedup emitted URLs — recon merge lists are commonly 10-50% duplicates,
+	// and each duplicate would otherwise cost a full (re)navigation.
+	seen := make(map[string]struct{})
+
 	scanner := bufio.NewScanner(file)
+	// allow long lines (default bufio.Scanner caps at 64KB)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		candidate := scanner.Text()
 		if candidate == "" {
@@ -65,6 +71,10 @@ func (fr *FileReader) Read(ch chan<- string) error {
 		}
 
 		for _, url := range fr.urlsFor(candidate, ports) {
+			if _, dup := seen[url]; dup {
+				continue
+			}
+			seen[url] = struct{}{}
 			ch <- url
 		}
 	}

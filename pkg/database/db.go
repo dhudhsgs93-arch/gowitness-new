@@ -53,6 +53,14 @@ func Connection(uri string, shouldExist, debug bool) (*gorm.DB, error) {
 			return nil, err
 		}
 		c.Exec("PRAGMA foreign_keys = ON")
+		// durability + concurrency: WAL survives crashes far better than the
+		// default DELETE journal, NORMAL sync is safe under WAL, busy_timeout
+		// avoids "database is locked" under concurrent writers, and
+		// autocheckpoint keeps the -wal file from growing unbounded.
+		c.Exec("PRAGMA journal_mode = WAL")
+		c.Exec("PRAGMA synchronous = NORMAL")
+		c.Exec("PRAGMA busy_timeout = 5000")
+		c.Exec("PRAGMA wal_autocheckpoint = 1000")
 	case "postgres":
 		dsn, err := convertPostgresURItoDSN(uri)
 		if err != nil {

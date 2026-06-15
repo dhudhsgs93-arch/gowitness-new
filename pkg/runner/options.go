@@ -96,6 +96,12 @@ type Scan struct {
 	// HttpCodeFilter are http response codes to screenshot. this is a filter.
 	// by default all codes are screenshotted
 	HttpCodeFilter []int
+	// Prefilter enables a fast TCP liveness pre-check before launching Chrome.
+	// Dead hosts (NXDOMAIN/refused/timeout) are dropped cheaply instead of
+	// burning a full Chrome navigation timeout each.
+	Prefilter bool
+	// PrefilterTimeout is the TCP dial timeout, in seconds, for the pre-check.
+	PrefilterTimeout int
 }
 
 // NewDefaultOptions returns Options with some default values
@@ -113,6 +119,8 @@ func NewDefaultOptions() *Options {
 			UriFilter:        []string{"http", "https"},
 			ScreenshotFormat: "jpeg",
 			HttpCodeFilter:   []int{},
+			Prefilter:        true,
+			PrefilterTimeout: 3,
 		},
 		Logging: Logging{
 			Debug:         true,

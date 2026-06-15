@@ -136,7 +136,9 @@ func init() {
 
 	// "Threads" & other
 	scanCmd.PersistentFlags().StringVarP(&opts.Scan.Driver, "driver", "", "chromedp", "The scan driver to use. Can be one of [gorod, chromedp]")
-	scanCmd.PersistentFlags().IntVarP(&opts.Scan.Threads, "threads", "t", 6, "Number of concurrent threads (goroutines) to use")
+	scanCmd.PersistentFlags().IntVarP(&opts.Scan.Threads, "threads", "t", 0, "Number of concurrent Chrome workers. 0 = auto (min(32,max(8,NumCPU)))")
+	scanCmd.PersistentFlags().BoolVar(&opts.Scan.Prefilter, "prefilter", true, "Fast TCP liveness pre-check before Chrome; drops dead hosts (NXDOMAIN/refused/timeout) cheaply")
+	scanCmd.PersistentFlags().IntVar(&opts.Scan.PrefilterTimeout, "prefilter-timeout", 3, "TCP dial timeout (seconds) for the liveness pre-filter")
 	scanCmd.PersistentFlags().IntVarP(&opts.Scan.Timeout, "timeout", "T", 60, "Number of seconds before considering a page timed out")
 	scanCmd.PersistentFlags().IntVar(&opts.Scan.Delay, "delay", 3, "Number of seconds delay between navigation and screenshotting")
 	scanCmd.PersistentFlags().StringSliceVar(&opts.Scan.UriFilter, "uri-filter", []string{"http", "https"}, "Valid URIs to pass to the scanning process")

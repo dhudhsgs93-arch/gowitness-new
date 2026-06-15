@@ -6,11 +6,15 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"runtime"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	wappalyzer "github.com/projectdiscovery/wappalyzergo"
 	"github.com/sensepost/gowitness/internal/islazy"
 	"github.com/sensepost/gowitness/pkg/models"
+	"github.com/sensepost/gowitness/pkg/prefilter"
 	"github.com/sensepost/gowitness/pkg/writers"
 )
 
@@ -29,6 +33,11 @@ type Runner struct {
 	// Targets to scan.
 	// This would typically be fed from a gowitness/pkg/reader.
 	Targets chan string
+
+	// LiveTargets holds targets that survived the TCP liveness pre-filter.
+	// When prefiltering is enabled, Chrome workers consume from this channel
+	// instead of Targets.
+	LiveTargets chan string
 
 	// in case we need to bail
 	ctx    context.Context
@@ -71,17 +80,32 @@ func NewRunner(logger *slog.Logger, driver Driver, opts Options, writers []write
 		return nil, err
 	}
 
+	// auto-tune the worker count when not explicitly set (Threads <= 0).
+	// witness work is I/O-bound (network + chrome), so oversubscribe cores.
+	if opts.Scan.Threads <= 0 {
+		n := runtime.NumCPU()
+		if n < 8 {
+			n = 8
+		}
+		if n > 32 {
+			n = 32
+		}
+		opts.Scan.Threads = n
+		logger.Debug("auto-tuned threads", "threads", opts.Scan.Threads, "num-cpu", runtime.NumCPU())
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Runner{
-		Driver:     driver,
-		Wappalyzer: wap,
-		options:    opts,
-		writers:    writers,
-		Targets:    make(chan string),
-		log:        logger,
-		ctx:        ctx,
-		cancel:     cancel,
+		Driver:      driver,
+		Wappalyzer:  wap,
+		options:     opts,
+		writers:     writers,
+		Targets:     make(chan string, 1000),
+		LiveTargets: make(chan string, 2*opts.Scan.Threads),
+		log:         logger,
+		ctx:         ctx,
+		cancel:      cancel,
 	}, nil
 }
 
@@ -113,6 +137,17 @@ func (run *Runner) checkUrl(target string) error {
 // Run executes the runner, processing targets as they arrive
 // in the Targets channel
 func (run *Runner) Run() {
+	// witnessSource is the channel Chrome workers consume from. With the
+	// liveness pre-filter enabled, a cheap TCP-dial stage sits between the
+	// reader (Targets) and the (expensive) Chrome workers (LiveTargets),
+	// so dead hosts never reach Chrome.
+	witnessSource := run.Targets
+
+	if run.options.Scan.Prefilter {
+		witnessSource = run.LiveTargets
+		run.startPrefilter()
+	}
+
 	wg := sync.WaitGroup{}
 
 	// will spawn Scan.Theads number of "workers" as goroutines
@@ -126,7 +161,7 @@ func (run *Runner) Run() {
 				select {
 				case <-run.ctx.Done():
 					return
-				case target, ok := <-run.Targets:
+				case target, ok := <-witnessSource:
 					if !ok {
 						return
 					}
@@ -178,6 +213,66 @@ func (run *Runner) Run() {
 	}
 
 	wg.Wait()
+}
+
+// startPrefilter launches a pool of cheap TCP-dial workers that consume from
+// run.Targets and forward only live targets to run.LiveTargets. Dead targets
+// (NXDOMAIN/refused/timeout) are dropped here so they never reach Chrome.
+// run.LiveTargets is closed once every target has been pre-checked.
+func (run *Runner) startPrefilter() {
+	// pre-filter network dials are far cheaper than Chrome, so fan out wider
+	// than the Chrome worker pool to keep the live pipeline saturated.
+	workers := run.options.Scan.Threads * 2
+	if workers > 64 {
+		workers = 64
+	}
+	if workers < 1 {
+		workers = 1
+	}
+
+	timeout := time.Duration(run.options.Scan.PrefilterTimeout) * time.Second
+	if timeout <= 0 {
+		timeout = 3 * time.Second
+	}
+
+	var live, dead atomic.Int64
+
+	go func() {
+		wg := sync.WaitGroup{}
+		for w := 0; w < workers; w++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for {
+					select {
+					case <-run.ctx.Done():
+						return
+					case target, ok := <-run.Targets:
+						if !ok {
+							return
+						}
+						if prefilter.IsLive(target, timeout) {
+							live.Add(1)
+							select {
+							case run.LiveTargets <- target:
+							case <-run.ctx.Done():
+								return
+							}
+						} else {
+							dead.Add(1)
+							if run.options.Logging.LogScanErrors {
+								run.log.Debug("prefilter dropped dead target", "target", target)
+							}
+						}
+					}
+				}
+			}()
+		}
+		wg.Wait()
+		close(run.LiveTargets)
+		run.log.Info("liveness pre-filter complete", "live", live.Load(), "dead", dead.Load(),
+			"dial-timeout", timeout.String(), "workers", workers)
+	}()
 }
 
 func (run *Runner) Close() {
