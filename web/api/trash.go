@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -68,6 +69,60 @@ func (h *ApiHandler) TrashAddHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Info("trashed host", "host", host)
 	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "trashed_host": entry})
+}
+
+type trashBulkRequest struct {
+	IDs []uint `json:"ids"`
+}
+
+// TrashBulkHandler trashes the hostnames of a set of result IDs in one call.
+// It resolves each result's canonical hostname (falling back to parsing the
+// URL when the hostname column is empty), de-duplicates, and idempotently adds
+// each to the trash list. Used by the gallery's bulk-select "Trash" action.
+func (h *ApiHandler) TrashBulkHandler(w http.ResponseWriter, r *http.Request) {
+	var req trashBulkRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
+		return
+	}
+	if len(req.IDs) == 0 {
+		json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "hosts": 0, "added": 0})
+		return
+	}
+
+	var results []models.Result
+	h.DB.Select("id", "hostname", "url").Where("id IN (?)", req.IDs).Find(&results)
+
+	// collect unique, non-empty hostnames
+	hostSet := make(map[string]struct{})
+	for _, res := range results {
+		host := normalizePattern(res.Hostname)
+		if host == "" {
+			// fall back to the URL host (older DBs may have an empty hostname column)
+			if u, err := url.Parse(res.URL); err == nil {
+				host = normalizePattern(u.Hostname())
+			}
+		}
+		if host != "" {
+			hostSet[host] = struct{}{}
+		}
+	}
+
+	added := 0
+	for host := range hostSet {
+		var existing models.TrashedHost
+		if h.DB.Where("host = ?", host).First(&existing).RowsAffected > 0 {
+			continue // already trashed
+		}
+		if err := h.DB.Create(&models.TrashedHost{Host: host, CreatedAt: time.Now()}).Error; err != nil {
+			log.Error("could not bulk-trash host", "host", host, "err", err)
+			continue
+		}
+		added++
+	}
+
+	log.Info("bulk trashed hosts", "selected", len(req.IDs), "hosts", len(hostSet), "added", added)
+	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "hosts": len(hostSet), "added": added})
 }
 
 // TrashRestoreHandler removes a host from the trash list by ID

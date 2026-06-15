@@ -329,6 +329,26 @@ const GalleryPage = () => {
     }
   };
 
+  // Bulk trash: hide the hostnames of all selected results from the gallery
+  const bulkTrash = async () => {
+    if (selected.size === 0) return;
+    const n = selected.size;
+    try {
+      const res = await api.post('trashBulk', { ids: Array.from(selected) });
+      setSelected(new Set());
+      setSelectMode(false);
+      // reload from scratch so hidden hosts drop out
+      pageRef.current = 1;
+      hasMoreRef.current = true;
+      loadBatch(1, true);
+      loadTrashedHosts();
+      loadReviewStats();
+      toast({ title: `Hid ${res?.hosts ?? n} host(s) from ${n} selected` });
+    } catch {
+      toast({ title: "Error", description: "Bulk trash failed", variant: "destructive" });
+    }
+  };
+
   // Copy URL
   const copyUrl = (url: string) => {
     navigator.clipboard.writeText(url);
@@ -591,6 +611,10 @@ const GalleryPage = () => {
           })}
           <Button variant="outline" size="sm" onClick={() => bulkTag('')} disabled={selected.size === 0} className="h-7 text-xs">
             <XIcon className="w-3 h-3 mr-1" /> Clear tag
+          </Button>
+          <div className="border-l h-5 mx-1" />
+          <Button variant="destructive" size="sm" onClick={bulkTrash} disabled={selected.size === 0} className="h-7 text-xs">
+            <EyeOffIcon className="w-3 h-3 mr-1" /> Trash hosts
           </Button>
           <div className="flex-1" />
           <Button variant="ghost" size="sm" onClick={() => { setSelectMode(false); setSelected(new Set()); }} className="h-7 text-xs">

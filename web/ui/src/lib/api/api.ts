@@ -69,6 +69,10 @@ const endpoints = {
     path: `/trash`,
     returnas: {} as { ok: boolean; trashed_host: trashedHost }
   },
+  trashBulk: {
+    path: `/trash/bulk`,
+    returnas: {} as { ok: boolean; hosts: number; added: number }
+  },
   trashRestore: {
     path: `/trash/restore`,
     returnas: {} as { ok: boolean }

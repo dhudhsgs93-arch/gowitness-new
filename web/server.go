@@ -86,6 +86,7 @@ func (s *Server) Run() {
 		r.Route("/trash", func(r chi.Router) {
 			r.Post("/", apih.TrashAddHandler)
 			r.Get("/", apih.TrashListHandler)
+			r.Post("/bulk", apih.TrashBulkHandler)
 			r.Post("/restore", apih.TrashRestoreHandler)
 			r.Get("/suggest", apih.TrashSuggestHandler)
 		})
