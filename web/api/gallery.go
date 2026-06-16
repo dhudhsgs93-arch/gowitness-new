@@ -73,7 +73,9 @@ func (h *ApiHandler) GalleryHandler(w http.ResponseWriter, r *http.Request) {
 		perceptionSort = false
 	}
 
-	// status code filtering
+	// status code filtering.
+	// Each selected code matches its whole hundreds-class, so pressing "500"
+	// also matches 503, 522, etc. (and "200" -> 2xx, "403" -> 4xx).
 	var statusCodes []int
 	statusFilterValue := r.URL.Query().Get("status")
 	if statusFilterValue != "" {
@@ -85,6 +87,21 @@ func (h *ApiHandler) GalleryHandler(w http.ResponseWriter, r *http.Request) {
 
 			statusCodes = append(statusCodes, statusCode)
 		}
+	}
+	// build an OR-of-ranges clause from the unique hundreds-buckets
+	var statusClause string
+	var statusArgs []interface{}
+	if len(statusCodes) > 0 {
+		buckets := make(map[int]bool)
+		for _, c := range statusCodes {
+			buckets[(c/100)*100] = true
+		}
+		parts := make([]string, 0, len(buckets))
+		for b := range buckets {
+			parts = append(parts, "(response_code >= ? AND response_code < ?)")
+			statusArgs = append(statusArgs, b, b+100)
+		}
+		statusClause = strings.Join(parts, " OR ")
 	}
 
 	// technology filtering
@@ -126,8 +143,8 @@ func (h *ApiHandler) GalleryHandler(w http.ResponseWriter, r *http.Request) {
 		query.Order("probed_at ASC")
 	}
 
-	if len(statusCodes) > 0 {
-		query.Where("response_code IN ?", statusCodes)
+	if statusClause != "" {
+		query.Where(statusClause, statusArgs...)
 	}
 
 	if len(technologies) > 0 {
@@ -193,8 +210,8 @@ func (h *ApiHandler) GalleryHandler(w http.ResponseWriter, r *http.Request) {
 	countQuery := h.DB.Model(&models.Result{})
 	// Exclude trashed hosts from count (substring match)
 	countQuery.Where("NOT EXISTS (SELECT 1 FROM trashed_hosts th WHERE results.hostname LIKE '%' || th.host || '%')")
-	if len(statusCodes) > 0 {
-		countQuery.Where("response_code IN ?", statusCodes)
+	if statusClause != "" {
+		countQuery.Where(statusClause, statusArgs...)
 	}
 	if len(technologies) > 0 {
 		countQuery.Where("id in (?)", h.DB.Model(&models.Technology{}).
