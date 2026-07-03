@@ -38,6 +38,7 @@ type galleryResult = {
   technologies: string[];
   review_status: string;
   review_comment: string;
+  cluster_size: number;
 };
 
 // list
@@ -164,6 +165,8 @@ interface detail {
   console: consolelog[];
   cookies: cookie[];
   review: review | null;
+  prev_id: number | null;
+  next_id: number | null;
 }
 
 interface searchresult {

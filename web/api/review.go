@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/sensepost/gowitness/pkg/log"
 	"github.com/sensepost/gowitness/pkg/models"
+	"gorm.io/gorm/clause"
 )
 
 type reviewRequest struct {
@@ -59,24 +60,16 @@ func (h *ApiHandler) ReviewSetHandler(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt: time.Now(),
 	}
 
-	// Upsert: create or update
-	result := h.DB.Where("result_id = ?", resultID).First(&models.Review{})
-	if result.RowsAffected == 0 {
-		if err := h.DB.Create(&review).Error; err != nil {
-			log.Error("could not create review", "err", err)
-			http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
-			return
-		}
-	} else {
-		if err := h.DB.Model(&models.Review{}).Where("result_id = ?", resultID).Updates(map[string]interface{}{
-			"status":     req.Status,
-			"comment":    req.Comment,
-			"updated_at": time.Now(),
-		}).Error; err != nil {
-			log.Error("could not update review", "err", err)
-			http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
-			return
-		}
+	// Atomic upsert keyed on the unique result_id column. The old
+	// read-then-write pattern raced: two concurrent requests for the same id
+	// could both see "not found" and both INSERT, tripping the unique index.
+	if err := h.DB.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "result_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"status", "comment", "updated_at"}),
+	}).Create(&review).Error; err != nil {
+		log.Error("could not upsert review", "err", err)
+		http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
+		return
 	}
 
 	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
@@ -133,15 +126,11 @@ func (h *ApiHandler) ReviewBulkHandler(w http.ResponseWriter, r *http.Request) {
 			Status:    req.Status,
 			UpdatedAt: now,
 		}
-		result := h.DB.Where("result_id = ?", id).First(&models.Review{})
-		if result.RowsAffected == 0 {
-			h.DB.Create(&review)
-		} else {
-			h.DB.Model(&models.Review{}).Where("result_id = ?", id).Updates(map[string]interface{}{
-				"status":     req.Status,
-				"updated_at": now,
-			})
-		}
+		// Upsert the status only, leaving any existing comment intact.
+		h.DB.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "result_id"}},
+			DoUpdates: clause.AssignmentColumns([]string{"status", "updated_at"}),
+		}).Create(&review)
 	}
 
 	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "count": len(req.IDs)})
@@ -174,13 +163,18 @@ func (h *ApiHandler) ReviewStatsHandler(w http.ResponseWriter, r *http.Request) 
 	var tagged int64
 	for _, sc := range statusCounts {
 		if sc.Status == "" {
-			counts["unseen"] += sc.Count
-		} else {
-			counts[sc.Status] = sc.Count
-			tagged += sc.Count
+			continue // rows with an empty status are not "tagged"
 		}
+		counts[sc.Status] = sc.Count
+		tagged += sc.Count
 	}
-	counts["unseen"] = total - tagged
+	// unseen = results with no (non-empty) status. Clamp at 0: a review can
+	// outlive its result in edge cases, which would otherwise go negative.
+	unseen := total - tagged
+	if unseen < 0 {
+		unseen = 0
+	}
+	counts["unseen"] = unseen
 
 	var commented int64
 	h.DB.Model(&models.Review{}).Where("comment != ''").Count(&commented)
@@ -203,25 +197,13 @@ func (h *ApiHandler) ReviewStatsHandler(w http.ResponseWriter, r *http.Request) 
 //	@Param			review	query	string	false	"Filter by review status."
 //	@Router			/review/export-urls [get]
 func (h *ApiHandler) ReviewExportURLsHandler(w http.ResponseWriter, r *http.Request) {
-	reviewFilter := r.URL.Query().Get("review")
+	// Mirror the gallery's filters (status, technology, failed, review) and
+	// exclude trashed hosts, so the exported URLs match exactly what the user
+	// currently sees rather than silently including hidden/filtered results.
+	filters := parseGalleryFilters(r)
 
 	var urls []string
-	query := h.DB.Model(&models.Result{}).Select("url").Where("failed = ?", false)
-
-	if reviewFilter != "" {
-		switch reviewFilter {
-		case "unseen":
-			query.Where("id NOT IN (?)", h.DB.Model(&models.Review{}).
-				Select("result_id").Where("status != ''"))
-		case "commented":
-			query.Where("id IN (?)", h.DB.Model(&models.Review{}).
-				Select("result_id").Where("comment != ''"))
-		default:
-			query.Where("id IN (?)", h.DB.Model(&models.Review{}).
-				Select("result_id").Where("status = ?", reviewFilter))
-		}
-	}
-
+	query := filters.apply(h.DB.Model(&models.Result{}).Select("url"), h)
 	query.Find(&urls)
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -251,7 +233,7 @@ func (h *ApiHandler) ReviewExportHandler(w http.ResponseWriter, r *http.Request)
 	h.DB.Model(&models.Result{}).
 		Select("results.url, results.response_code, results.title, reviews.status, reviews.comment").
 		Joins("JOIN reviews ON reviews.result_id = results.id").
-		Where("reviews.comment != '' OR reviews.status IN ('attention', 'vuln', 'interesting')").
+		Where("reviews.status != '' OR reviews.comment != ''").
 		Order("reviews.status DESC").
 		Find(&rows)
 

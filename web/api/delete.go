@@ -3,10 +3,30 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/sensepost/gowitness/pkg/log"
 	"github.com/sensepost/gowitness/pkg/models"
 )
+
+// deleteScreenshotFiles best-effort removes on-disk screenshot files for the
+// given result IDs. Only the DB rows (and their cascade children) are removed
+// by the delete; without this the .jpeg/.png files would be orphaned on disk.
+func (h *ApiHandler) deleteScreenshotFiles(ids []int) {
+	if h.ScreenshotPath == "" || len(ids) == 0 {
+		return
+	}
+	var files []string
+	h.DB.Model(&models.Result{}).Where("id IN ? AND filename != ''", ids).Pluck("filename", &files)
+	for _, f := range files {
+		if f == "" {
+			continue
+		}
+		// filepath.Base guards against a traversal payload in a stored name
+		_ = os.Remove(filepath.Join(h.ScreenshotPath, filepath.Base(f)))
+	}
+}
 
 type deleteResultRequest struct {
 	ID int `json:"id"`
@@ -35,6 +55,8 @@ func (h *ApiHandler) DeleteResultHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	log.Info("deleting id", "id", request.ID)
+
+	h.deleteScreenshotFiles([]int{request.ID})
 
 	if err := h.DB.Delete(&models.Result{}, request.ID).Error; err != nil {
 		log.Error("failed to delete result", "err", err)
@@ -66,6 +88,8 @@ func (h *ApiHandler) DeleteBulkHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Info("bulk deleting", "count", len(request.IDs))
+
+	h.deleteScreenshotFiles(request.IDs)
 
 	if err := h.DB.Delete(&models.Result{}, request.IDs).Error; err != nil {
 		log.Error("failed to bulk delete results", "err", err)

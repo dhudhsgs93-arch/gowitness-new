@@ -92,6 +92,7 @@ func (s *Server) Run() {
 		})
 
 		r.Post("/review/bulk", apih.ReviewBulkHandler)
+		r.Post("/review/auto-tag", apih.AutoTagHandler)
 		r.Get("/review/stats", apih.ReviewStatsHandler)
 		r.Get("/review/export", apih.ReviewExportHandler)
 		r.Get("/review/export-urls", apih.ReviewExportURLsHandler)

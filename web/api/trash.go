@@ -45,6 +45,12 @@ func (h *ApiHandler) TrashAddHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid or empty host"}`, http.StatusBadRequest)
 		return
 	}
+	// Guard against catastrophic over-match: trashing a 1-2 char substring
+	// (e.g. "co") would hide almost the entire gallery via the substring match.
+	if len(pattern) < 3 {
+		http.Error(w, `{"error":"host pattern too short (min 3 chars)"}`, http.StatusBadRequest)
+		return
+	}
 
 	host := pattern
 
@@ -152,7 +158,7 @@ func (h *ApiHandler) TrashListHandler(w http.ResponseWriter, r *http.Request) {
 	var response []trashedHostResponse
 	for _, th := range hosts {
 		var count int64
-		h.DB.Model(&models.Result{}).Where("hostname LIKE ?", "%"+th.Host+"%").Count(&count)
+		h.DB.Model(&models.Result{}).Where(hostnameContainsExpr(h.DB), th.Host).Count(&count)
 		response = append(response, trashedHostResponse{
 			ID:        th.ID,
 			Host:      th.Host,
@@ -182,7 +188,7 @@ func (h *ApiHandler) TrashSuggestHandler(w http.ResponseWriter, r *http.Request)
 	query := h.DB.Model(&models.Result{}).
 		Select("DISTINCT hostname").
 		Where("hostname != ''").
-		Where("NOT EXISTS (SELECT 1 FROM trashed_hosts th WHERE hostname LIKE '%' || th.host || '%')").
+		Where(trashExclusionClause(h.DB)).
 		Order("hostname").
 		Limit(limit)
 

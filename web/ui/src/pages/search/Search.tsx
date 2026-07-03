@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   CheckCircle2Icon, AlertTriangleIcon, StarIcon, SkullIcon, Trash2Icon, MessageSquareIcon,
-  CheckSquareIcon, SquareIcon, XIcon, EyeOffIcon,
+  CheckSquareIcon, SquareIcon, XIcon, EyeOffIcon, ScanSearchIcon,
 } from "lucide-react";
 import * as api from "@/lib/api/api";
 import * as apitypes from "@/lib/api/types";
@@ -22,6 +22,7 @@ const REVIEW_STATUSES = [
   { key: 'interesting', icon: StarIcon, label: 'Interesting', color: 'text-yellow-500', bg: 'bg-yellow-500/10 border-yellow-500/30' },
   { key: 'vuln', icon: SkullIcon, label: 'Vuln', color: 'text-purple-500', bg: 'bg-purple-500/10 border-purple-500/30' },
   { key: 'junk', icon: Trash2Icon, label: 'Junk', color: 'text-gray-500', bg: 'bg-gray-500/10 border-gray-500/30' },
+  { key: 'fuzz', icon: ScanSearchIcon, label: 'Fuzz', color: 'text-cyan-500', bg: 'bg-cyan-500/10 border-cyan-500/30' },
 ] as const;
 
 const getReviewBorderColor = (status: string) => {
@@ -31,6 +32,7 @@ const getReviewBorderColor = (status: string) => {
     case 'interesting': return 'border-l-4 border-l-yellow-500';
     case 'vuln': return 'border-l-4 border-l-purple-500';
     case 'junk': return 'border-l-4 border-l-gray-500 opacity-50';
+    case 'fuzz': return 'border-l-4 border-l-cyan-500';
     default: return '';
   }
 };

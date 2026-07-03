@@ -112,16 +112,15 @@ func (h *ApiHandler) SearchHandler(w http.ResponseWriter, r *http.Request) {
 
 			searchResults = appendResults(searchResults, resultIDs, headerResults, key)
 		case "p":
+			// Exact perception-hash match across ALL domains — every host that
+			// looks pixel-identical to this one (drives the "Visually Similar"
+			// button). Previously this resolved the fuzzy perception_hash_group_id,
+			// which pulled in near-variants and depended on gowitness's
+			// inconsistent greedy group assignment. "p:" is the operator trigger,
+			// so the stored hash is reconstructed as "p:"+value.
 			var perceptionHashResults []models.Result
 			if err := h.DB.Model(&models.Result{}).
-				Where("perception_hash_group_id in (?)", h.DB.Model(&models.Result{}).
-					Select("perception_hash_group_id").Distinct("perception_hash_group_id").
-					Where(
-						"perception_hash = ?",
-						// p: was used as the operatator trigger, but we need it
-						// back to resolve the group_id.
-						fmt.Sprintf("p:%s", value),
-					)).
+				Where("perception_hash = ?", fmt.Sprintf("p:%s", value)).
 				Find(&perceptionHashResults).Error; err != nil {
 
 				log.Error("failed to get perception hash results", "err", err)

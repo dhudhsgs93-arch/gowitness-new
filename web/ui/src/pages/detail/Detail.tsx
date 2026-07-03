@@ -4,7 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ExternalLink, ChevronLeft, ChevronRight, Code, ClockIcon, Trash2Icon, DownloadIcon, ImagesIcon, ZoomInIcon, CopyIcon, CheckCircle2Icon, AlertTriangleIcon, StarIcon, SkullIcon } from 'lucide-react';
+import { ExternalLink, ChevronLeft, ChevronRight, Code, ClockIcon, Trash2Icon, DownloadIcon, ImagesIcon, ZoomInIcon, CopyIcon, CheckCircle2Icon, AlertTriangleIcon, StarIcon, SkullIcon, ScanSearchIcon } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, } from "@/components/ui/dialog";
 import { WideSkeleton } from '@/components/loading';
 import { Form, Link, useNavigate, useParams } from 'react-router-dom';
@@ -25,6 +25,7 @@ const REVIEW_STATUSES = [
   { key: 'interesting', icon: StarIcon, label: 'Interesting', color: 'text-yellow-500', bg: 'bg-yellow-500/10 border-yellow-500/30' },
   { key: 'vuln', icon: SkullIcon, label: 'Vuln', color: 'text-purple-500', bg: 'bg-purple-500/10 border-purple-500/30' },
   { key: 'junk', icon: Trash2Icon, label: 'Junk', color: 'text-gray-500', bg: 'bg-gray-500/10 border-gray-500/30' },
+  { key: 'fuzz', icon: ScanSearchIcon, label: 'Fuzz', color: 'text-cyan-500', bg: 'bg-cyan-500/10 border-cyan-500/30' },
 ] as const;
 
 
@@ -83,17 +84,19 @@ const ScreenshotDetailPage = () => {
     commentTimer.current = setTimeout(() => saveReview(reviewStatus, value), 800);
   };
 
-  // handle arrowleft and arrowright events
+  // handle arrowleft and arrowright events — navigate to the actual adjacent
+  // result (prev_id/next_id from the API), not id±1 which skips gaps/404s.
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'ArrowLeft') {
-        if (currentId > 1) {
-          navigate(`/screenshot/${currentId - 1}`);
-        }
-      }
+      // don't hijack arrow keys while typing in the comment box
+      const tag = (event.target as HTMLElement)?.tagName;
+      if (tag === 'TEXTAREA' || tag === 'INPUT') return;
 
-      if (event.key === 'ArrowRight') {
-        navigate(`/screenshot/${currentId + 1}`);
+      if (event.key === 'ArrowLeft' && detail?.prev_id) {
+        navigate(`/screenshot/${detail.prev_id}`);
+      }
+      if (event.key === 'ArrowRight' && detail?.next_id) {
+        navigate(`/screenshot/${detail.next_id}`);
       }
     };
 
@@ -103,7 +106,7 @@ const ScreenshotDetailPage = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [currentId, navigate]);
+  }, [detail, navigate]);
 
   const getLogTypeColor = (type: string) => {
     if (type === 'console.warning' || type === 'console.warn') return "bg-yellow-500 text-black";
@@ -150,14 +153,14 @@ const ScreenshotDetailPage = () => {
     return (
       <div className="flex justify-between items-center">
         <div className="flex space-x-2">
-          <Link to={"/screenshot/" + (currentId - 1)} >
-            <Button variant="outline" size="sm" disabled={currentId <= 1}>
+          <Link to={detail?.prev_id ? "/screenshot/" + detail.prev_id : "#"} onClick={e => { if (!detail?.prev_id) e.preventDefault(); }}>
+            <Button variant="outline" size="sm" disabled={!detail?.prev_id}>
               <ChevronLeft className="mr-2 h-4 w-4" />
               Previous
             </Button>
           </Link>
-          <Link to={"/screenshot/" + (currentId + 1)}>
-            <Button variant="outline" size="sm">
+          <Link to={detail?.next_id ? "/screenshot/" + detail.next_id : "#"} onClick={e => { if (!detail?.next_id) e.preventDefault(); }}>
+            <Button variant="outline" size="sm" disabled={!detail?.next_id}>
               Next
               <ChevronRight className="ml-2 h-4 w-4" />
             </Button>

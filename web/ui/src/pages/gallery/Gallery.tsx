@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import {
   AlertOctagonIcon, BanIcon, CheckIcon, ClockIcon, ExternalLinkIcon,
   FilterIcon, GroupIcon, ShieldCheckIcon, XIcon, CheckCircle2Icon, AlertTriangleIcon, StarIcon, SkullIcon, Trash2Icon, MessageSquareIcon,
-  LoaderIcon, CopyIcon, DownloadIcon, CheckSquareIcon, SquareIcon, ArrowDownUpIcon, EyeOffIcon, UndoIcon
+  LoaderIcon, CopyIcon, DownloadIcon, CheckSquareIcon, SquareIcon, ArrowDownUpIcon, EyeOffIcon, UndoIcon,
+  SparklesIcon, LayersIcon, ScanSearchIcon
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -29,6 +30,7 @@ const REVIEW_STATUSES = [
   { key: 'interesting', icon: StarIcon, label: 'Interesting', color: 'text-yellow-500', bg: 'bg-yellow-500/10 border-yellow-500/30' },
   { key: 'vuln', icon: SkullIcon, label: 'Vuln', color: 'text-purple-500', bg: 'bg-purple-500/10 border-purple-500/30' },
   { key: 'junk', icon: Trash2Icon, label: 'Junk', color: 'text-gray-500', bg: 'bg-gray-500/10 border-gray-500/30' },
+  { key: 'fuzz', icon: ScanSearchIcon, label: 'Fuzz', color: 'text-cyan-500', bg: 'bg-cyan-500/10 border-cyan-500/30' },
 ] as const;
 
 const BATCH_SIZE = 48;
@@ -40,6 +42,7 @@ const getReviewBorderColor = (status: string) => {
     case 'interesting': return 'border-l-4 border-l-yellow-500';
     case 'vuln': return 'border-l-4 border-l-purple-500';
     case 'junk': return 'border-l-4 border-l-gray-500 opacity-50';
+    case 'fuzz': return 'border-l-4 border-l-cyan-500';
     default: return '';
   }
 };
@@ -71,6 +74,8 @@ const GalleryPage = () => {
   const perceptionGroup = searchParams.get("perception") === "true";
   const showFailed = searchParams.get("failed") !== "false";
   const sortOrder = searchParams.get("sort") || "";
+  const collapse = searchParams.get("collapse") === "true";
+  const [autoTagging, setAutoTagging] = useState(false);
 
   const loadReviewStats = useCallback(async () => {
     try {
@@ -153,6 +158,7 @@ const GalleryPage = () => {
       };
       if (reviewFilter) params.review = reviewFilter;
       if (sortOrder) params.sort = sortOrder;
+      if (collapse) params.collapse = 'true';
 
       const s = await api.get('gallery', params);
       const newResults = s.results || [];
@@ -171,7 +177,7 @@ const GalleryPage = () => {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [technologyFilter, statusFilter, perceptionGroup, showFailed, reviewFilter, sortOrder]);
+  }, [technologyFilter, statusFilter, perceptionGroup, showFailed, reviewFilter, sortOrder, collapse]);
 
   // Initial load + reload on filter change
   useEffect(() => {
@@ -180,11 +186,17 @@ const GalleryPage = () => {
     setSelected(new Set());
     loadBatch(1, true);
     loadReviewStats();
-  }, [technologyFilter, statusFilter, perceptionGroup, showFailed, reviewFilter, sortOrder]);
+  }, [technologyFilter, statusFilter, perceptionGroup, showFailed, reviewFilter, sortOrder, collapse]);
 
   useEffect(() => {
     getWappalyzerData(setWappalyzer, setTechnology);
     loadTrashedHosts();
+  }, []);
+
+  // Cancel any pending comment-autosave timers on unmount.
+  useEffect(() => {
+    const timers = saveTimers.current;
+    return () => { Object.values(timers).forEach(clearTimeout); };
   }, []);
 
   // Infinite scroll via IntersectionObserver
@@ -257,6 +269,38 @@ const GalleryPage = () => {
     });
   };
 
+  const handleCollapse = () => {
+    const turningOn = !collapse;
+    setSearchParams(prev => {
+      if (prev.get("collapse") === "true") prev.delete("collapse");
+      else prev.set("collapse", "true");
+      return prev;
+    });
+    toast({
+      title: turningOn ? "Collapsed view on" : "Collapsed view off",
+      description: turningOn ? "Showing one card per visually-identical cluster" : "Showing every result",
+      duration: 1800,
+    });
+  };
+
+  // Auto-triage: heuristically tag unseen results (interesting/attention/junk).
+  const runAutoTag = async () => {
+    setAutoTagging(true);
+    try {
+      const res = await api.post('autoTag', {});
+      const parts = Object.entries(res.counts || {}).map(([k, v]) => `${v} ${k}`).join(', ');
+      toast({ title: `Auto-triage: tagged ${res.tagged}`, description: parts || 'no new matches', duration: 4000 });
+      pageRef.current = 1;
+      hasMoreRef.current = true;
+      loadBatch(1, true);
+      loadReviewStats();
+    } catch {
+      toast({ title: "Error", description: "Auto-triage failed", variant: "destructive" });
+    } finally {
+      setAutoTagging(false);
+    }
+  };
+
   const handleReviewFilter = (filter: string) => {
     setSearchParams(prev => {
       if (prev.get("review") === filter) {
@@ -268,35 +312,38 @@ const GalleryPage = () => {
     });
   };
 
-  const setReviewStatus = async (resultId: number, idx: number, newStatus: string) => {
-    if (!gallery) return;
-    const item = gallery[idx];
+  // Look results up by id, never by array index: infinite-scroll appends and
+  // filter reloads mutate the list, so a stale positional index captured by a
+  // debounced autosave could write to (and clobber) an unrelated result.
+  const setReviewStatus = async (resultId: number, newStatus: string) => {
+    const item = gallery.find(g => g.id === resultId);
+    if (!item) return;
     const status = item.review_status === newStatus ? '' : newStatus;
     try {
       await api.post('reviewSet', { status, comment: item.review_comment || '' }, { id: resultId });
-      setGallery(prev => prev?.map((g, i) => i === idx ? { ...g, review_status: status } : g));
+      setGallery(prev => prev?.map(g => g.id === resultId ? { ...g, review_status: status } : g));
       loadReviewStats();
     } catch {
       toast({ title: "Error", description: "Failed to save review", variant: "destructive" });
     }
   };
 
-  const saveComment = async (resultId: number, idx: number, comment: string) => {
-    if (!gallery) return;
-    const item = gallery[idx];
+  const saveComment = async (resultId: number, comment: string) => {
+    const item = gallery.find(g => g.id === resultId);
+    if (!item) return;
     try {
       await api.post('reviewSet', { status: item.review_status || '', comment }, { id: resultId });
-      setGallery(prev => prev?.map((g, i) => i === idx ? { ...g, review_comment: comment } : g));
+      setGallery(prev => prev?.map(g => g.id === resultId ? { ...g, review_comment: comment } : g));
       loadReviewStats();
     } catch {
       toast({ title: "Error", description: "Failed to save comment", variant: "destructive" });
     }
   };
 
-  const handleCommentChange = (resultId: number, idx: number, value: string) => {
-    setGallery(prev => prev?.map((g, i) => i === idx ? { ...g, review_comment: value } : g));
+  const handleCommentChange = (resultId: number, value: string) => {
+    setGallery(prev => prev?.map(g => g.id === resultId ? { ...g, review_comment: value } : g));
     if (saveTimers.current[resultId]) clearTimeout(saveTimers.current[resultId]);
-    saveTimers.current[resultId] = setTimeout(() => saveComment(resultId, idx, value), 800);
+    saveTimers.current[resultId] = setTimeout(() => saveComment(resultId, value), 800);
   };
 
   // Bulk select
@@ -355,10 +402,14 @@ const GalleryPage = () => {
     toast({ title: "Copied", description: url, duration: 1500 });
   };
 
-  // Export URLs
+  // Export URLs — pass every active gallery filter so the exported set matches
+  // exactly what is on screen (the backend applies the same filters + trash).
   const exportUrls = () => {
     const params = new URLSearchParams();
     if (reviewFilter) params.set("review", reviewFilter);
+    if (statusFilter) params.set("status", statusFilter);
+    if (technologyFilter) params.set("technologies", technologyFilter);
+    params.set("failed", showFailed ? "true" : "false");
     window.open(`/api/review/export-urls?${params.toString()}`, '_blank');
   };
 
@@ -371,7 +422,7 @@ const GalleryPage = () => {
     ];
   }, [technology, technologyFilter]);
 
-  const renderGalleryCard = (screenshot: apitypes.galleryResult, idx: number) => {
+  const renderGalleryCard = (screenshot: apitypes.galleryResult) => {
     const probedDate = new Date(screenshot.probed_at);
     const timeAgo = formatDistanceToNow(probedDate, { addSuffix: true });
     const rawDate = format(probedDate, "PPpp");
@@ -408,7 +459,7 @@ const GalleryPage = () => {
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
-                        onClick={(e) => { if (selectMode) return; e.preventDefault(); setReviewStatus(screenshot.id, idx, s.key); }}
+                        onClick={(e) => { if (selectMode) return; e.preventDefault(); setReviewStatus(screenshot.id, s.key); }}
                         className={cn(
                           "p-1 rounded transition-all border",
                           isActive ? s.bg : "border-transparent hover:border-muted-foreground/30",
@@ -451,6 +502,14 @@ const GalleryPage = () => {
                   {screenshot.response_code}
                 </Badge>
               </div>
+              {screenshot.cluster_size > 1 && (
+                <div className="absolute top-2 left-2">
+                  <Badge className="bg-cyan-500/90 text-white border-0 gap-1 shadow" title={`${screenshot.cluster_size} visually-identical screenshots collapsed into this card`}>
+                    <LayersIcon className="w-3 h-3" />
+                    {screenshot.cluster_size} identical
+                  </Badge>
+                </div>
+              )}
             </CardContent>
           ) : (
             <Link to={`/screenshot/${screenshot.id}`}>
@@ -474,6 +533,14 @@ const GalleryPage = () => {
                     {screenshot.response_code}
                   </Badge>
                 </div>
+                {screenshot.cluster_size > 1 && (
+                  <div className="absolute top-2 left-2">
+                    <Badge className="bg-cyan-500/90 text-white border-0 gap-1 shadow" title={`${screenshot.cluster_size} visually-identical screenshots collapsed into this card`}>
+                      <LayersIcon className="w-3 h-3" />
+                      {screenshot.cluster_size} identical
+                    </Badge>
+                  </div>
+                )}
                 <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
                   <ExternalLinkIcon className="text-white drop-shadow-lg" />
                 </div>
@@ -563,7 +630,7 @@ const GalleryPage = () => {
                 <Textarea
                   placeholder="comment..."
                   value={screenshot.review_comment || ''}
-                  onChange={(e) => handleCommentChange(screenshot.id, idx, e.target.value)}
+                  onChange={(e) => handleCommentChange(screenshot.id, e.target.value)}
                   className="text-xs min-h-[28px] max-h-[80px] resize-y font-mono"
                   rows={1}
                 />
@@ -748,6 +815,27 @@ const GalleryPage = () => {
         </div>
         <div className="flex items-center gap-2">
           <Button
+            variant="outline"
+            size="sm"
+            onClick={runAutoTag}
+            disabled={autoTagging}
+            className="h-7 text-xs"
+            title="Heuristically tag unseen results (interesting / attention / junk)"
+          >
+            {autoTagging ? <LoaderIcon className="w-3 h-3 mr-1 animate-spin" /> : <SparklesIcon className="w-3 h-3 mr-1" />}
+            Auto-triage
+          </Button>
+          <Button
+            variant={collapse ? "secondary" : "outline"}
+            size="sm"
+            onClick={handleCollapse}
+            className={cn("h-7 text-xs", collapse && "ring-1 ring-cyan-500 text-cyan-500")}
+            title="Collapse visually-identical results into one card per cluster"
+          >
+            <LayersIcon className="w-3 h-3 mr-1" />
+            {collapse ? 'Collapsed' : 'Collapse'}
+          </Button>
+          <Button
             variant={sortOrder ? "secondary" : "outline"}
             size="sm"
             onClick={handleSort}
@@ -838,8 +926,14 @@ const GalleryPage = () => {
             Export URLs
           </Button>
           <span className="text-sm text-muted-foreground">
-            {gallery.length} / {totalCount}
+            {gallery.length} / {totalCount}{collapse ? ' clusters' : ''}
           </span>
+          {collapse && (
+            <span className="text-xs font-medium text-cyan-500 bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.5 rounded">
+              <LayersIcon className="w-3 h-3 inline mr-1" />
+              Collapsed view
+            </span>
+          )}
           {trashedHosts.length > 0 && (
             <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
               <EyeOffIcon className="w-3 h-3 inline mr-1" />
@@ -851,7 +945,7 @@ const GalleryPage = () => {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 pt-4">
-        {gallery?.map((screenshot, idx) => renderGalleryCard(screenshot, idx))}
+        {gallery?.map((screenshot) => renderGalleryCard(screenshot))}
       </div>
 
       {/* Infinite scroll sentinel */}

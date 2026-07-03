@@ -59,6 +59,10 @@ const endpoints = {
     path: `/review/stats`,
     returnas: {} as reviewStats
   },
+  autoTag: {
+    path: `/review/auto-tag`,
+    returnas: {} as { scanned: number; tagged: number; counts: Record<string, number> }
+  },
 
   // trash endpoints
   trashList: {
