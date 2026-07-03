@@ -143,7 +143,13 @@ func (run *Runner) Run() {
 	// so dead hosts never reach Chrome.
 	witnessSource := run.Targets
 
-	if run.options.Scan.Prefilter {
+	// The pre-filter dials targets directly with net.DialTimeout, bypassing any
+	// Chrome proxy. If a proxy is configured (e.g. to reach internal-only hosts
+	// or via SOCKS), a direct dial would fail for proxy-reachable-only targets
+	// and wrongly drop them as dead — so disable pre-filtering in that case.
+	if run.options.Scan.Prefilter && run.options.Chrome.Proxy != "" {
+		run.log.Warn("liveness pre-filter disabled because a Chrome proxy is set (direct TCP dial would bypass the proxy)")
+	} else if run.options.Scan.Prefilter {
 		witnessSource = run.LiveTargets
 		run.startPrefilter()
 	}

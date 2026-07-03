@@ -16,7 +16,7 @@ type Review struct {
 	ID        uint      `json:"id" gorm:"primarykey"`
 	ResultID  uint      `json:"result_id" gorm:"uniqueIndex"`
 	Status    string    `json:"status" gorm:"index"`
-	Comment   string    `json:"comment" gorm:"type:longtext"`
+	Comment   string    `json:"comment" gorm:"type:text"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 

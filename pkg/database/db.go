@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"github.com/glebarez/sqlite"
-	"golang.org/x/net/publicsuffix"
 	"github.com/sensepost/gowitness/pkg/models"
+	"golang.org/x/net/publicsuffix"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -48,19 +48,23 @@ func Connection(uri string, shouldExist, debug bool) (*gorm.DB, error) {
 			}
 		}
 
-		c, err = gorm.Open(sqlite.Open(db.Host+db.Path+"?cache=shared"), config)
+		// Pragmas are set via the DSN so they apply to EVERY pooled
+		// connection, not just the one that happens to run a post-open Exec.
+		// foreign_keys(ON) is required for the OnDelete:CASCADE constraints to
+		// fire; busy_timeout avoids "database is locked" under concurrent
+		// writers; WAL survives crashes far better than the default journal;
+		// synchronous(NORMAL) is safe under WAL; autocheckpoint keeps the -wal
+		// file from growing unbounded.
+		dsn := db.Host + db.Path + "?cache=shared" +
+			"&_pragma=busy_timeout(5000)" +
+			"&_pragma=journal_mode(WAL)" +
+			"&_pragma=synchronous(NORMAL)" +
+			"&_pragma=foreign_keys(ON)" +
+			"&_pragma=wal_autocheckpoint(1000)"
+		c, err = gorm.Open(sqlite.Open(dsn), config)
 		if err != nil {
 			return nil, err
 		}
-		c.Exec("PRAGMA foreign_keys = ON")
-		// durability + concurrency: WAL survives crashes far better than the
-		// default DELETE journal, NORMAL sync is safe under WAL, busy_timeout
-		// avoids "database is locked" under concurrent writers, and
-		// autocheckpoint keeps the -wal file from growing unbounded.
-		c.Exec("PRAGMA journal_mode = WAL")
-		c.Exec("PRAGMA synchronous = NORMAL")
-		c.Exec("PRAGMA busy_timeout = 5000")
-		c.Exec("PRAGMA wal_autocheckpoint = 1000")
 	case "postgres":
 		dsn, err := convertPostgresURItoDSN(uri)
 		if err != nil {
@@ -118,33 +122,37 @@ func backfillHostnames(db *gorm.DB) {
 		URL string
 	}
 
-	batchSize := 500
-	offset := 0
+	// Keyset pagination by id. Offset-based paging is wrong here: each row we
+	// update drops out of the (hostname='' ...) filter, so an incrementing
+	// OFFSET would step over a whole window of not-yet-processed rows. Walking
+	// id > lastID visits every matching row exactly once, and also can't loop
+	// forever on a URL that resolves to an empty hostname (its id still advances).
+	const batchSize = 500
+	var lastID uint
 	for {
 		var rows []idURL
 		db.Model(&models.Result{}).Select("id, url").
-			Where("(hostname = '' OR root_domain = '') AND url != ''").
-			Limit(batchSize).Offset(offset).Find(&rows)
+			Where("(hostname = '' OR root_domain = '') AND url != '' AND id > ?", lastID).
+			Order("id").Limit(batchSize).Find(&rows)
 
 		if len(rows) == 0 {
 			break
 		}
 
 		for _, row := range rows {
-			h := extractHostname(row.URL)
+			h := ExtractHostname(row.URL)
 			rd := ExtractRootDomain(h)
 			db.Model(&models.Result{}).Where("id = ?", row.ID).Updates(map[string]interface{}{
 				"hostname":    h,
 				"root_domain": rd,
 			})
+			lastID = row.ID
 		}
-
-		offset += batchSize
 	}
 }
 
-// extractHostname extracts and normalizes a hostname from a URL
-func extractHostname(rawURL string) string {
+// ExtractHostname extracts and normalizes a hostname from a URL
+func ExtractHostname(rawURL string) string {
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
 		return ""
