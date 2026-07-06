@@ -26,6 +26,7 @@ import (
 	"github.com/sensepost/gowitness/pkg/imagehash"
 	"github.com/sensepost/gowitness/pkg/models"
 	"github.com/sensepost/gowitness/pkg/runner"
+	"github.com/sensepost/gowitness/pkg/wappalyzer"
 )
 
 // Chromedp is a driver that probes web targets using chromedp
@@ -376,6 +377,9 @@ func (run *Chromedp) Witness(target string, thisRunner *runner.Runner) (*models.
 	// get cookies
 	var cookies []*network.Cookie
 
+	// wappalyzer in-browser probe result (js globals, dom nodes, scriptSrc, meta)
+	var wappResult wappalyzer.BrowserResult
+
 	// grab a screenshot
 	var (
 		img           []byte
@@ -445,6 +449,15 @@ func (run *Chromedp) Witness(target string, thisRunner *runner.Runner) (*models.
 		}))
 	}
 
+	// run the wappalyzer in-browser probe against the live page so we can detect
+	// js- and dom-based technologies the static header/html pass would miss.
+	tasks = append(tasks, chromedp.ActionFunc(func(ctx context.Context) error {
+		if err := chromedp.Evaluate(thisRunner.Wappalyzer.CollectorExpr(), &wappResult).Do(ctx); err != nil && run.options.Logging.LogScanErrors {
+			logger.Error("could not run wappalyzer in-browser probe", "err", err)
+		}
+		return nil
+	}))
+
 	tasks = append(tasks, chromedp.ActionFunc(func(ctx context.Context) error {
 		params := page.CaptureScreenshot().
 			WithQuality(int64(run.options.Scan.ScreenshotJpegQuality)).
@@ -501,13 +514,22 @@ func (run *Chromedp) Witness(target string, thisRunner *runner.Runner) (*models.
 		return nil, fmt.Errorf("http response code was %d which is filtered", result.ResponseCode)
 	}
 
-	// fingerprint technologies in the first response
-	if fingerprints := thisRunner.Wappalyzer.Fingerprint(result.HeaderMap(), []byte(result.HTML)); fingerprints != nil {
-		for tech := range fingerprints {
-			result.Technologies = append(result.Technologies, models.Technology{
-				Value: tech,
-			})
-		}
+	// fingerprint technologies using response headers, rendered HTML and the
+	// in-browser js/dom probe collected above.
+	wappInput := &wappalyzer.Input{
+		URL:     wappURL(result.FinalURL, target),
+		Headers: result.HeaderMap(),
+		Cookies: cookieMap(result.Cookies),
+		HTML:    result.HTML,
+	}
+	wappResult.ApplyTo(wappInput)
+	for _, tech := range thisRunner.Wappalyzer.Fingerprint(wappInput) {
+		result.Technologies = append(result.Technologies, models.Technology{
+			Value:      tech.Name,
+			Version:    tech.Version,
+			Categories: strings.Join(tech.Categories, ", "),
+			Confidence: tech.Confidence,
+		})
 	}
 
 	if img == nil && screenshotErr == nil {

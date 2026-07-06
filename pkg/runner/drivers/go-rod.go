@@ -3,6 +3,7 @@ package driver
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"image"
 	"log/slog"
@@ -20,6 +21,7 @@ import (
 	"github.com/sensepost/gowitness/pkg/log"
 	"github.com/sensepost/gowitness/pkg/models"
 	"github.com/sensepost/gowitness/pkg/runner"
+	"github.com/sensepost/gowitness/pkg/wappalyzer"
 	"github.com/ysmood/gson"
 )
 
@@ -340,6 +342,13 @@ func (run *Gorod) Witness(target string, runner *runner.Runner) (*models.Result,
 		return nil, fmt.Errorf("could not navigate to target: %s", err)
 	}
 
+	// wait for the load event so client-rendered content and page scripts have
+	// executed before we capture HTML and run the wappalyzer probe. Bounded by
+	// the page timeout; non-fatal on error (e.g. slow subresource).
+	if err := page.WaitLoad(); err != nil && run.options.Logging.LogScanErrors {
+		logger.Error("could not wait for page load event", "err", err)
+	}
+
 	// wait for the configured delay
 	if run.options.Scan.Delay > 0 {
 		time.Sleep(time.Duration(run.options.Scan.Delay) * time.Second)
@@ -408,16 +417,38 @@ func (run *Gorod) Witness(target string, runner *runner.Runner) (*models.Result,
 		}
 	}
 
+	// run the wappalyzer in-browser probe against the live page so we can detect
+	// js- and dom-based technologies the static header/html pass would miss.
+	var wappResult wappalyzer.BrowserResult
+	if obj, err := page.Eval(runner.Wappalyzer.CollectorJS()); err != nil {
+		if run.options.Logging.LogScanErrors {
+			logger.Error("could not run wappalyzer in-browser probe", "err", err)
+		}
+	} else if raw, err := obj.Value.MarshalJSON(); err == nil {
+		if err := json.Unmarshal(raw, &wappResult); err != nil && run.options.Logging.LogScanErrors {
+			logger.Error("could not decode wappalyzer probe result", "err", err)
+		}
+	}
+
 	// stop the event handlers
 	dismissEvents = true
 
-	// fingerprint technologies in the first response
-	if fingerprints := runner.Wappalyzer.Fingerprint(result.HeaderMap(), []byte(result.HTML)); fingerprints != nil {
-		for tech := range fingerprints {
-			result.Technologies = append(result.Technologies, models.Technology{
-				Value: tech,
-			})
-		}
+	// fingerprint technologies using response headers, rendered HTML and the
+	// in-browser js/dom probe collected above.
+	wappInput := &wappalyzer.Input{
+		URL:     wappURL(result.FinalURL, target),
+		Headers: result.HeaderMap(),
+		Cookies: cookieMap(result.Cookies),
+		HTML:    result.HTML,
+	}
+	wappResult.ApplyTo(wappInput)
+	for _, tech := range runner.Wappalyzer.Fingerprint(wappInput) {
+		result.Technologies = append(result.Technologies, models.Technology{
+			Value:      tech.Name,
+			Version:    tech.Version,
+			Categories: strings.Join(tech.Categories, ", "),
+			Confidence: tech.Confidence,
+		})
 	}
 
 	// take the screenshot. getting here often means the page responded and we have

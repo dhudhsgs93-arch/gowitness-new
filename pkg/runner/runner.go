@@ -11,17 +11,17 @@ import (
 	"sync/atomic"
 	"time"
 
-	wappalyzer "github.com/projectdiscovery/wappalyzergo"
 	"github.com/sensepost/gowitness/internal/islazy"
 	"github.com/sensepost/gowitness/pkg/models"
 	"github.com/sensepost/gowitness/pkg/prefilter"
+	"github.com/sensepost/gowitness/pkg/wappalyzer"
 	"github.com/sensepost/gowitness/pkg/writers"
 )
 
 // Runner is a runner that probes web targets using a driver
 type Runner struct {
 	Driver     Driver
-	Wappalyzer *wappalyzer.Wappalyze
+	Wappalyzer *wappalyzer.Wappalyzer
 
 	// options for the Runner to consider
 	options Options

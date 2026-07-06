@@ -329,9 +329,26 @@ const ScreenshotDetailPage = () => {
               {detail.technologies.map((tech) => {
                 const iconUrl = getIconUrl(tech.value, wappalyzer);
                 return (
-                  <div key={tech.id} className="flex items-center space-x-2">
-                    {iconUrl && <img src={iconUrl} alt={tech.value} className="w-6 h-6" loading="lazy" />}
+                  <div
+                    key={tech.id}
+                    className="flex items-center space-x-2"
+                    title={tech.categories || undefined}
+                  >
+                    {iconUrl && (
+                      <img
+                        src={iconUrl}
+                        alt={tech.value}
+                        className="w-6 h-6"
+                        loading="lazy"
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none";
+                        }}
+                      />
+                    )}
                     <span>{tech.value}</span>
+                    {tech.version && (
+                      <span className="text-xs text-muted-foreground">{tech.version}</span>
+                    )}
                   </div>
                 );
               })}

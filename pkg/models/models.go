@@ -103,6 +103,13 @@ type Technology struct {
 	ResultID uint `json:"result_id"`
 
 	Value string `json:"value" gorm:"index"`
+	// Version is the detected version string, when a fingerprint pattern
+	// extracts one (may be empty).
+	Version string `json:"version"`
+	// Categories is a comma-separated list of Wappalyzer category names.
+	Categories string `json:"categories"`
+	// Confidence is the aggregate detection confidence, 0-100.
+	Confidence int `json:"confidence"`
 }
 
 type Header struct {

@@ -81,6 +81,9 @@ interface technology {
   id: number;
   result_id: number;
   value: string;
+  version: string;
+  categories: string;
+  confidence: number;
 }
 
 interface header {

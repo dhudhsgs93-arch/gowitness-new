@@ -100,6 +100,11 @@ func (s *Server) Run() {
 		r.Get("/review/{id}", apih.ReviewGetHandler)
 	})
 
+	// technology icons, served from this server (cached) instead of hot-linking
+	// the upstream. Mounted outside /api so the isJSON middleware does not force
+	// an application/json content-type onto the image bytes.
+	r.Get("/wappalyzer/icon", apih.IconHandler)
+
 	// screenshot files
 	r.Mount("/screenshots", http.StripPrefix("/screenshots/", http.FileServer(http.Dir(s.ScreenshotPath))))
 
