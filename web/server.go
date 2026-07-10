@@ -91,6 +91,15 @@ func (s *Server) Run() {
 			r.Get("/suggest", apih.TrashSuggestHandler)
 		})
 
+		r.Route("/categories", func(r chi.Router) {
+			r.Get("/", apih.CategoryListHandler)
+			r.Post("/", apih.CategoryCreateHandler)
+			r.Post("/delete", apih.CategoryDeleteHandler)
+			r.Get("/domains", apih.CategoryDomainsHandler)
+			r.Post("/assign", apih.CategoryAssignHandler)
+			r.Post("/unassign", apih.CategoryUnassignHandler)
+		})
+
 		r.Post("/review/bulk", apih.ReviewBulkHandler)
 		r.Post("/review/auto-tag", apih.AutoTagHandler)
 		r.Get("/review/stats", apih.ReviewStatsHandler)

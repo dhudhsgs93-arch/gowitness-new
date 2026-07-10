@@ -8,7 +8,7 @@ import {
   AlertOctagonIcon, BanIcon, CheckIcon, ClockIcon, ExternalLinkIcon,
   FilterIcon, GroupIcon, ShieldCheckIcon, XIcon, CheckCircle2Icon, AlertTriangleIcon, StarIcon, SkullIcon, Trash2Icon, MessageSquareIcon,
   LoaderIcon, CopyIcon, DownloadIcon, CheckSquareIcon, SquareIcon, ArrowDownUpIcon, EyeOffIcon, UndoIcon,
-  SparklesIcon, LayersIcon, ScanSearchIcon
+  SparklesIcon, LayersIcon, ScanSearchIcon, TagsIcon
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -23,6 +23,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import ManageCategories from "@/components/manage-categories";
 
 const REVIEW_STATUSES = [
   { key: 'done', icon: CheckCircle2Icon, label: 'Done', color: 'text-green-500', bg: 'bg-green-500/10 border-green-500/30' },
@@ -75,7 +77,10 @@ const GalleryPage = () => {
   const showFailed = searchParams.get("failed") !== "false";
   const sortOrder = searchParams.get("sort") || "";
   const collapse = searchParams.get("collapse") === "true";
+  const categoryFilter = searchParams.get("category") || "";
   const [autoTagging, setAutoTagging] = useState(false);
+  const [categories, setCategories] = useState<apitypes.category[]>([]);
+  const [manageCatOpen, setManageCatOpen] = useState(false);
 
   const loadReviewStats = useCallback(async () => {
     try {
@@ -88,6 +93,12 @@ const GalleryPage = () => {
     try {
       const hosts = await api.get('trashList');
       setTrashedHosts(hosts);
+    } catch { /* ignore */ }
+  }, []);
+
+  const loadCategories = useCallback(async () => {
+    try {
+      setCategories(await api.get('categories'));
     } catch { /* ignore */ }
   }, []);
 
@@ -159,6 +170,7 @@ const GalleryPage = () => {
       if (reviewFilter) params.review = reviewFilter;
       if (sortOrder) params.sort = sortOrder;
       if (collapse) params.collapse = 'true';
+      if (categoryFilter) params.category = categoryFilter;
 
       const s = await api.get('gallery', params);
       const newResults = s.results || [];
@@ -177,7 +189,7 @@ const GalleryPage = () => {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [technologyFilter, statusFilter, perceptionGroup, showFailed, reviewFilter, sortOrder, collapse]);
+  }, [technologyFilter, statusFilter, perceptionGroup, showFailed, reviewFilter, sortOrder, collapse, categoryFilter]);
 
   // Initial load + reload on filter change
   useEffect(() => {
@@ -186,11 +198,12 @@ const GalleryPage = () => {
     setSelected(new Set());
     loadBatch(1, true);
     loadReviewStats();
-  }, [technologyFilter, statusFilter, perceptionGroup, showFailed, reviewFilter, sortOrder, collapse]);
+  }, [technologyFilter, statusFilter, perceptionGroup, showFailed, reviewFilter, sortOrder, collapse, categoryFilter]);
 
   useEffect(() => {
     getWappalyzerData(setWappalyzer, setTechnology);
     loadTrashedHosts();
+    loadCategories();
   }, []);
 
   // Cancel any pending comment-autosave timers on unmount.
@@ -310,6 +323,26 @@ const GalleryPage = () => {
       }
       return prev;
     });
+  };
+
+  const handleCategoryFilter = (value: string) => {
+    setSearchParams(prev => {
+      if (value === "all") prev.delete("category");
+      else prev.set("category", value);
+      return prev;
+    });
+  };
+
+  // On close, refresh categories and reload the gallery so any re-assignments
+  // are reflected in the current (possibly category-filtered) view.
+  const handleManageCatOpenChange = (isOpen: boolean) => {
+    setManageCatOpen(isOpen);
+    if (!isOpen) {
+      loadCategories();
+      pageRef.current = 1;
+      hasMoreRef.current = true;
+      loadBatch(1, true);
+    }
   };
 
   // Look results up by id, never by array index: infinite-scroll appends and
@@ -757,6 +790,25 @@ const GalleryPage = () => {
             <GroupIcon className="mr-2 h-4 w-4" />
             Group by Similar
           </Button>
+          {categories.length > 0 && (
+            <Select value={categoryFilter || "all"} onValueChange={handleCategoryFilter}>
+              <SelectTrigger className={cn("w-[190px]", categoryFilter && "border-primary text-primary")}>
+                <TagsIcon className="mr-2 h-4 w-4" />
+                <SelectValue placeholder="Category" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All categories</SelectItem>
+                {categories.map(c => (
+                  <SelectItem key={c.id} value={String(c.id)}>
+                    <span className="flex items-center gap-2">
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: c.color }} />
+                      {c.name}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <div className="flex items-center space-x-2 p-2">
             <Switch
               id="show-failed"
@@ -814,6 +866,16 @@ const GalleryPage = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setManageCatOpen(true)}
+            className="h-7 text-xs"
+            title="Create groups and assign domains to categories"
+          >
+            <TagsIcon className="w-3 h-3 mr-1" />
+            Categories
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -960,6 +1022,12 @@ const GalleryPage = () => {
           <span className="text-muted-foreground text-sm">All {gallery.length} results loaded</span>
         )}
       </div>
+
+      <ManageCategories
+        open={manageCatOpen}
+        onOpenChange={handleManageCatOpenChange}
+        onChanged={loadCategories}
+      />
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import { gallery, list, statistics, wappalyzer, detail, searchresult, technologylist, review, reviewStats, trashedHost } from "@/lib/api/types";
+import { gallery, list, statistics, wappalyzer, detail, searchresult, technologylist, review, reviewStats, trashedHost, category, domainEntry } from "@/lib/api/types";
 
 const endpoints = {
   // api base path
@@ -84,6 +84,32 @@ const endpoints = {
   trashSuggest: {
     path: `/trash/suggest`,
     returnas: [] as string[]
+  },
+
+  // category endpoints
+  categories: {
+    path: `/categories`,
+    returnas: [] as category[]
+  },
+  categoryCreate: {
+    path: `/categories`,
+    returnas: {} as category
+  },
+  categoryDelete: {
+    path: `/categories/delete`,
+    returnas: {} as { ok: boolean }
+  },
+  categoryDomains: {
+    path: `/categories/domains`,
+    returnas: [] as domainEntry[]
+  },
+  categoryAssign: {
+    path: `/categories/assign`,
+    returnas: {} as { ok: boolean; count: number }
+  },
+  categoryUnassign: {
+    path: `/categories/unassign`,
+    returnas: {} as { ok: boolean; count: number }
   },
 
   // post endpoints

@@ -17,6 +17,7 @@ type galleryFilters struct {
 	technologies []string
 	showFailed   bool
 	reviewFilter string
+	categoryID   uint
 }
 
 // parseGalleryFilters extracts the shared filter set from a request.
@@ -50,6 +51,13 @@ func parseGalleryFilters(r *http.Request) galleryFilters {
 	}
 
 	f.reviewFilter = r.URL.Query().Get("review")
+
+	if v := r.URL.Query().Get("category"); v != "" {
+		if id, err := strconv.Atoi(v); err == nil && id > 0 {
+			f.categoryID = uint(id)
+		}
+	}
+
 	return f
 }
 
@@ -94,6 +102,13 @@ func (f galleryFilters) apply(query *gorm.DB, h *ApiHandler) *gorm.DB {
 
 	if !f.showFailed {
 		query = query.Where("failed = ?", false)
+	}
+
+	// Category filter: restrict to results whose root_domain is assigned to the
+	// selected category.
+	if f.categoryID > 0 {
+		query = query.Where("root_domain IN (?)", h.DB.Model(&models.DomainCategory{}).
+			Select("domain").Where("category_id = ?", f.categoryID))
 	}
 
 	switch f.reviewFilter {

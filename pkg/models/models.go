@@ -11,6 +11,22 @@ type TrashedHost struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// Category is a user-defined group of domains (e.g. by criticality or infra).
+type Category struct {
+	ID        uint      `json:"id" gorm:"primarykey"`
+	Name      string    `json:"name" gorm:"uniqueIndex;not null"`
+	Color     string    `json:"color" gorm:"not null;default:''"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// DomainCategory assigns a registrable domain (root_domain) to a Category.
+// Domain is unique: a domain belongs to at most one category.
+type DomainCategory struct {
+	ID         uint   `json:"id" gorm:"primarykey"`
+	Domain     string `json:"domain" gorm:"uniqueIndex;not null"`
+	CategoryID uint   `json:"category_id" gorm:"index;not null"`
+}
+
 // Review is a user review / tag for a result
 type Review struct {
 	ID        uint      `json:"id" gorm:"primarykey"`

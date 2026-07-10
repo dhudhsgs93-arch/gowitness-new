@@ -197,6 +197,24 @@ interface trashedHost {
   count: number;
 }
 
+// host categories
+interface category {
+  id: number;
+  name: string;
+  color: string;
+  created_at: string;
+  domain_count: number;
+  host_count: number;
+}
+
+interface domainEntry {
+  domain: string;
+  hosts: number;
+  category_id: number;
+  category_name: string;
+  category_color: string;
+}
+
 export type {
   statistics,
   wappalyzer,
@@ -216,4 +234,6 @@ export type {
   searchresult,
   technologylist,
   trashedHost,
+  category,
+  domainEntry,
 };

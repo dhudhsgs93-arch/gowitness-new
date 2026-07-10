@@ -99,6 +99,8 @@ func Connection(uri string, shouldExist, debug bool) (*gorm.DB, error) {
 		&models.Cookie{},
 		&models.Review{},
 		&models.TrashedHost{},
+		&models.Category{},
+		&models.DomainCategory{},
 	); err != nil {
 		return nil, err
 	}
